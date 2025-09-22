@@ -1,14 +1,19 @@
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from .core.config import get_settings
+from .core.config import get_settings, Settings
 from .core.logging import init_logging, request_context_middleware
 from .core import errors
-from .routers import health, budgets, expenses
+from .routers import health, budgets, expenses, timeline
 
 
-def create_app() -> FastAPI:
-    settings = get_settings()
+def create_app(settings_override: Settings | None = None) -> FastAPI:
+    """Application factory.
+
+    settings_override: pass an already constructed Settings instance for tests
+    to isolate environment (e.g., temp DB). Falls back to cached get_settings().
+    """
+    settings = settings_override or get_settings()
     # Initialize logging early
     init_logging(debug=settings.debug)
 
@@ -28,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(budgets.router)
     app.include_router(expenses.router)
+    app.include_router(timeline.router)
 
     @app.get("/")
     async def root():

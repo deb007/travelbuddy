@@ -363,3 +363,40 @@ class Database:
             for r in totals:
                 r["percent"] = round((r["inr_total"] / grand) * 100, 2)
             return totals
+
+    # Trip dates (timeline) ---------------------------------------
+    def get_trip_dates(self) -> Optional[Dict[str, date]]:
+        """Return stored trip start/end dates if both exist; else None.
+
+        Values are stored in metadata table under keys:
+          - trip_start_date
+          - trip_end_date
+        """
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT key, value FROM metadata WHERE key IN ('trip_start_date','trip_end_date')"
+            )
+            rows = cur.fetchall()
+            if len(rows) < 2:
+                return None
+            data = {r["key"]: r["value"] for r in rows}
+            if "trip_start_date" not in data or "trip_end_date" not in data:
+                return None
+            return {
+                "start_date": date.fromisoformat(data["trip_start_date"]),
+                "end_date": date.fromisoformat(data["trip_end_date"]),
+            }
+
+    def set_trip_dates(self, start_date: date, end_date: date) -> None:
+        """Persist trip start & end dates atomically (upserts)."""
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO metadata(key,value) VALUES('trip_start_date',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=(strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                (start_date.isoformat(),),
+            )
+            cur.execute(
+                "INSERT INTO metadata(key,value) VALUES('trip_end_date',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=(strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                (end_date.isoformat(),),
+            )

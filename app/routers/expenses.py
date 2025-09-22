@@ -97,24 +97,50 @@ async def list_expenses_endpoint(
     currency: Optional[str] = Query(None, description="Filter by original currency"),
     phase: Optional[str] = Query(
         None,
-        description="Stub param for future phase filtering (pre-trip|trip). Currently returns 400 if provided because timeline not implemented yet.",
+        description="Filter by trip phase (pre-trip|trip). pre-trip = expenses dated before configured trip start; trip = on/after start. If trip dates not configured: phase=pre-trip returns empty list; phase=trip returns all.",
     ),
     db: Database = Depends(get_db),
 ):
-    # 1. Phase handling stub
-    if phase is not None:
-        raise HTTPException(status_code=400, detail="phase filter not available yet")
-    # 2. Date ordering validation
+    # 1. Date ordering validation (base user filters)
     if start_date and end_date and start_date > end_date:
         raise HTTPException(
             status_code=400, detail="start_date cannot be after end_date"
         )
-    # 3. Currency validation
+    # 2. Currency validation
     if currency:
         currency = currency.upper()
         if currency not in CURRENCIES:
             raise HTTPException(status_code=400, detail="unsupported currency")
-    # 4. Fetch
+    # 3. Phase filtering translation (option A semantics)
+    if phase is not None:
+        phase = phase.lower()
+        if phase not in {"pre-trip", "trip"}:
+            raise HTTPException(status_code=400, detail="invalid phase value")
+        trip_dates = db.get_trip_dates()
+        if trip_dates is None:
+            # Trip dates not set yet: pre-trip => empty window, trip => no additional restriction
+            if phase == "pre-trip":
+                return []
+            # phase == trip just proceeds with existing user filters
+        else:
+            trip_start: date = trip_dates["start_date"]
+            if phase == "pre-trip":
+                # Window: strictly before trip_start
+                derived_end = trip_start.fromordinal(trip_start.toordinal() - 1)
+                # Intersect with user-provided filters
+                if end_date is None or derived_end < end_date:
+                    end_date = derived_end
+                # If user start_date is after derived_end -> empty result early
+                if start_date and start_date > end_date:
+                    return []
+            else:  # phase == 'trip'
+                # Window: on/after trip_start
+                if start_date is None or start_date < trip_start:
+                    start_date = trip_start
+                if end_date and start_date and start_date > end_date:
+                    return []
+
+    # 4. Fetch after applying any derived phase constraints
     rows = db.list_expenses(start_date=start_date, end_date=end_date, currency=currency)
     return [_row_to_expense_out(r) for r in rows]
 

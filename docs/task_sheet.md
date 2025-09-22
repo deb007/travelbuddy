@@ -66,9 +66,9 @@ Phase Mapping: Phase 1 (Core + Budget + Logging), Phase 2 (Analytics + Exchange 
 ### E5 Timeline Handling
 | ID | Task | Sub Task | Priority | Description | Dependencies | Status | What Was Done | What Should Be Tested |
 |----|------|----------|----------|-------------|--------------|--------|---------------|-----------------------|
-| T05.01 | Timeline | Trip date config | P0 | Store start/end dates in metadata. | T02.01 | Not Started |  | Persist & retrieve dates. |
-| T05.02 | Timeline | Phase resolver | P0 | Utility: given date -> pre-trip or trip. | T05.01 | Not Started |  | Edge boundary dates. |
-| T05.03 | Timeline | Filter integration | P1 | Phase filter param uses resolver. | T05.02 | Not Started |  | Pre-trip returns earlier expenses. |
+| T05.01 | Timeline | Trip date config | P0 | Store start/end dates in metadata. | T02.01 | Done | Added metadata-backed trip dates: DAL methods `get_trip_dates`/`set_trip_dates`, `TripDates` model (validation end>=start), new `timeline` router with PUT/GET /trip-dates/, registered in app. | Setting trip dates persists ISO dates; GET returns them; end before start rejected (422); missing dates => 404. |
+| T05.02 | Timeline | Phase resolver | P0 | Utility: given date -> pre-trip or trip. | T05.01 | Done | Added `services/timeline.resolve_phase(date, trip_dates)` returning 'pre-trip' if before configured start_date else 'trip'. Falls back to 'trip' if dates unset. | Before start -> pre-trip; start day and after -> trip; unset dates default to trip. |
+| T05.03 | Timeline | Filter integration | P1 | Phase filter param uses resolver. | T05.02 | Done | Added phase filtering to GET /expenses: phase=pre-trip maps to end_date < trip_start; phase=trip maps to start_date >= trip_start. Option A semantics when trip dates unset (pre-trip -> empty list, trip -> all). Added app factory override for test isolation + smoke test script. | Pre-trip returns only dates before trip start; trip returns on/after start; unset trip dates behave per spec. |
 
 ### E6 Forex Card Tracking
 | ID | Task | Sub Task | Priority | Description | Dependencies | Status | What Was Done | What Should Be Tested |
