@@ -40,7 +40,7 @@ Phase Mapping: Phase 1 (Core + Budget + Logging), Phase 2 (Analytics + Exchange 
 ### E2 Data Layer & Models
 | ID | Task | Sub Task | Priority | Description | Dependencies | Status | What Was Done | What Should Be Tested |
 |----|------|----------|----------|-------------|--------------|--------|---------------|-----------------------|
-| T02.01 | DB | SQLite schema design | P0 | Translate PRD models to SQL tables (expenses, budgets, forex_cards, exchange_rates, metadata). | T01.01 | Not Started |  | Tables created correctly. |
+| T02.01 | DB | SQLite schema design | P0 | Translate PRD models to SQL tables (expenses, budgets, forex_cards, exchange_rates, metadata). | T01.01 | Done | Implemented `db/schema.py` with idempotent DDL for: budgets, forex_cards, exchange_rates, expenses, metadata; added init_db() utility and verified table creation. | Tables created correctly. |
 | T02.02 | DB | Migration script | P0 | Simple bootstrap migration (idempotent create tables). | T02.01 | Not Started |  | Running twice is safe. |
 | T02.03 | Models | Pydantic models | P0 | ExpenseIn, ExpenseOut, Budget, ForexCard, RateRecord. | T02.01 | Not Started |  | Validation errors on bad input. |
 | T02.04 | DAL | CRUD utilities | P0 | Abstract DB access (insert expense, list, update spent). | T02.02 | Not Started |  | Insert/select roundtrip integrity. |
