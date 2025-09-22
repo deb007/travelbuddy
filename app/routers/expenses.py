@@ -8,7 +8,13 @@ from app.core.config import get_settings
 from app.db.dal import Database
 from app.models.expense import ExpenseIn, ExpenseOut, ExpenseUpdateIn
 from app.services.expense_validation import validate_expense_domain
-from app.services.rates.providers import make_rate_provider, RateServiceFacade
+from app.services.rates.providers import (
+    RateServiceFacade,
+)  # retained for type compatibility
+from app.services.rates.cache_service import (
+    get_central_rate_cache_service,
+    CentralRateCacheService,
+)
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 
@@ -20,10 +26,9 @@ def get_db() -> Database:
     return Database(settings.db_path)
 
 
-def get_rate_service() -> RateServiceFacade:
-    settings = get_settings()
-    provider = make_rate_provider(settings.exchange_rate_provider)
-    return RateServiceFacade(provider)
+def get_rate_service() -> CentralRateCacheService:
+    # Singleton central cache service (T07.03)
+    return get_central_rate_cache_service()
 
 
 # Request / Response Models (thin wrappers if needed) --------------
