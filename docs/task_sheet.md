@@ -73,8 +73,8 @@ Phase Mapping: Phase 1 (Core + Budget + Logging), Phase 2 (Analytics + Exchange 
 ### E6 Forex Card Tracking
 | ID | Task | Sub Task | Priority | Description | Dependencies | Status | What Was Done | What Should Be Tested |
 |----|------|----------|----------|-------------|--------------|--------|---------------|-----------------------|
-| T06.01 | Forex | Schema & model | P0 | Track loaded & spent for SGD/MYR forex cards. | T02.01 | Not Started |  | CRUD integrity. |
-| T06.02 | Forex | Load/adjust endpoint | P1 | Modify loaded amount. | T06.01 | Not Started |  | Prevent negative values. |
+| T06.01 | Forex | Schema & model | P0 | Track loaded & spent for SGD/MYR forex cards. | T02.01 | Done | Schema table already existed; confirmed Pydantic `ForexCard` model with currency validation & remaining/low balance helpers. Added DAL methods `get_forex_card` and `list_forex_cards` for retrieval. No mutations yet (handled in T06.02+). | Retrieval returns correct rows; unsupported currency rejected at model layer. |
+| T06.02 | Forex | Load/adjust endpoint | P1 | Modify loaded amount. | T06.01 | Done | Added `forex` router with `PUT /forex-cards/{currency}` (upsert semantics) and `GET /forex-cards/` list. DAL method `set_forex_card_loaded` validates non-negative and preserves spent_amount. Auto schema migration on app startup ensures table exists for fresh test DBs. | Create/update SGD/MYR returns 200 with remaining & low_balance flag; unsupported currency 400; negative amount 400. |
 | T06.03 | Forex | Deduct on expense | P0 | If paymentMethod=forex: increment spent & available. | T04.02, T06.01 | Not Started |  | Correct balance after sequence. |
 | T06.04 | Forex | Low balance alert hook | P1 | Flag when remaining <20%. | T06.03 | Not Started |  | Alert triggers at threshold. |
 

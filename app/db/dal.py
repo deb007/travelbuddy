@@ -400,3 +400,39 @@ class Database:
                 "INSERT INTO metadata(key,value) VALUES('trip_end_date',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=(strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
                 (end_date.isoformat(),),
             )
+
+    # Forex Cards -------------------------------------------------
+    def get_forex_card(self, currency: str) -> Optional[Dict[str, Any]]:
+        """Return forex card row for currency if exists (currency primary key)."""
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM forex_cards WHERE currency=?", (currency,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def list_forex_cards(self) -> List[Dict[str, Any]]:
+        """Return all forex card rows ordered by currency."""
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM forex_cards ORDER BY currency")
+            return [dict(r) for r in cur.fetchall()]
+
+    def set_forex_card_loaded(self, currency: str, loaded_amount: float) -> None:
+        """Upsert forex card loaded_amount keeping spent_amount intact.
+
+        Creates row if missing (spent_amount=0). Rejects negative values.
+        """
+        if loaded_amount < 0:
+            raise ValueError("loaded_amount cannot be negative")
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO forex_cards (currency, loaded_amount, spent_amount)
+                VALUES (?, ?, 0)
+                ON CONFLICT(currency) DO UPDATE SET
+                  loaded_amount=excluded.loaded_amount,
+                  updated_at=(strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+                """,
+                (currency, loaded_amount),
+            )

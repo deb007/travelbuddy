@@ -3,8 +3,9 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from .core.config import get_settings, Settings
 from .core.logging import init_logging, request_context_middleware
+from .db.migrate import apply_migrations
 from .core import errors
-from .routers import health, budgets, expenses, timeline
+from .routers import health, budgets, expenses, timeline, forex
 
 
 def create_app(settings_override: Settings | None = None) -> FastAPI:
@@ -16,6 +17,16 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     settings = settings_override or get_settings()
     # Initialize logging early
     init_logging(debug=settings.debug)
+
+    # Ensure database schema (idempotent) so test-injected fresh DBs have tables
+    try:
+        apply_migrations(settings.db_path)  # type: ignore[arg-type]
+    except Exception:
+        # Failing to init DB is fatal; re-raise after logging
+        import logging
+
+        logging.getLogger("app").exception("failed to apply migrations on startup")
+        raise
 
     app = FastAPI(
         title=settings.app_name, debug=settings.debug, version=settings.version
@@ -34,6 +45,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(budgets.router)
     app.include_router(expenses.router)
     app.include_router(timeline.router)
+    app.include_router(forex.router)
 
     @app.get("/")
     async def root():
