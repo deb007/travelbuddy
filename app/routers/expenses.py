@@ -68,7 +68,7 @@ async def create_expense(
         exchange_rate = rate_service.get_rate(payload.currency)
         inr_equivalent = rate_service.compute_inr(payload.amount, payload.currency)
 
-    # 3. Persist (atomic budget spent increment via dedicated DAL method)
+    # 3. Persist (atomic budget spent increment via dedicated DAL method; T06.03 also updates forex card spent for forex payment)
     try:
         expense_id = db.insert_expense_with_budget(
             expense=payload,
@@ -192,7 +192,7 @@ async def patch_expense(
         new_exchange_rate = rate_service.get_rate(currency)
         new_inr_equivalent = rate_service.compute_inr(new_amount, currency)
 
-    # 5. Persist atomically
+    # 5. Persist atomically (T06.03: adjusts forex card spent deltas when payment method changes or amount changes)
     try:
         db.update_expense_with_budget(
             expense_id=expense_id,

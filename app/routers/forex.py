@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from app.core.config import get_settings
 from app.db.dal import Database
 from app.models.constants import FOREX_CURRENCIES
-from app.models.forex import ForexCard
+from app.services.forex_utils import card_status
 
 router = APIRouter(prefix="/forex-cards", tags=["forex"])
 
@@ -24,22 +24,13 @@ class ForexCardOut(BaseModel):
     loaded_amount: float
     spent_amount: float
     remaining: float
+    percent_remaining: float
     low_balance: bool
 
     @classmethod
     def from_row(cls, row: dict) -> "ForexCardOut":
-        card = ForexCard(
-            currency=row["currency"],
-            loaded_amount=row["loaded_amount"],
-            spent_amount=row["spent_amount"],
-        )
-        return cls(
-            currency=card.currency,
-            loaded_amount=card.loaded_amount,
-            spent_amount=card.spent_amount,
-            remaining=card.remaining,
-            low_balance=card.low_balance_flag(),
-        )
+        enriched = card_status(row)
+        return cls(**enriched)
 
 
 @router.put(

@@ -18,6 +18,7 @@ from typing import List, Optional, Dict, Any
 from datetime import date
 
 from app.models import ExpenseIn
+from app.models.constants import FOREX_CURRENCIES
 
 
 class Database:
@@ -67,11 +68,11 @@ class Database:
     ) -> int:
         """Insert expense and increment matching budget spent atomically.
 
-        T03.03 (Budget Spent Auto-Update): This consolidates logic so the
-        upcoming expense creation endpoint (T04.02) only needs to compute
-        INR equivalent + exchange rate and call this method. Both the
-        expense row insertion and budget spent increment happen within the
-        same transaction to maintain consistency.
+        Extended in T06.03: If payment_method == 'forex' and currency is a
+        supported forex currency (SGD, MYR), also increment forex_cards
+        spent_amount (creating row if missing). No balance enforcement yet
+        (MVP keeps it simple; validation may be added later). Forex card
+        loaded_amount is not changed here—only spent_amount accrues.
         """
         with self._connect() as conn:
             cur = conn.cursor()
@@ -105,6 +106,19 @@ class Database:
                 "UPDATE budgets SET spent_amount = spent_amount + ?, updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE currency = ?",
                 (expense.amount, expense.currency),
             )
+            # 4. (T06.03) If forex payment, increment forex card spent
+            if (
+                expense.payment_method == "forex"
+                and expense.currency in FOREX_CURRENCIES
+            ):
+                cur.execute(
+                    "INSERT OR IGNORE INTO forex_cards (currency, loaded_amount, spent_amount) VALUES (?, 0, 0)",
+                    (expense.currency,),
+                )
+                cur.execute(
+                    "UPDATE forex_cards SET spent_amount = spent_amount + ?, updated_at=(strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE currency=?",
+                    (expense.amount, expense.currency),
+                )
             return expense_id
 
     def update_budget_delta(self, currency: str, delta: float) -> None:
@@ -141,12 +155,17 @@ class Database:
         """
         with self._connect() as conn:
             cur = conn.cursor()
-            # Ensure the expense exists & get its currency for updating budget
-            cur.execute("SELECT currency FROM expenses WHERE id=?", (expense_id,))
+            # Fetch existing state for forex delta logic
+            cur.execute(
+                "SELECT amount, currency, payment_method FROM expenses WHERE id=?",
+                (expense_id,),
+            )
             row = cur.fetchone()
             if not row:
                 raise ValueError("expense not found")
             currency = row["currency"]
+            old_amount = float(row["amount"])
+            old_pm = row["payment_method"]
             # Update expense
             cur.execute(
                 """
@@ -178,6 +197,32 @@ class Database:
                     "UPDATE budgets SET spent_amount = spent_amount + ?, updated_at=(strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE currency=?",
                     (budget_delta, currency),
                 )
+            # (T06.03) Forex spent adjustments
+            # Cases:
+            # 1. old forex & new forex: adjust by delta (new_amount - old_amount)
+            # 2. old forex & new non-forex: subtract old_amount
+            # 3. old non-forex & new forex: add new_amount
+            # 4. neither forex: no-op
+            if currency in FOREX_CURRENCIES and (
+                old_pm == "forex" or new_payment_method == "forex"
+            ):
+                cur.execute(
+                    "INSERT OR IGNORE INTO forex_cards (currency, loaded_amount, spent_amount) VALUES (?, 0, 0)",
+                    (currency,),
+                )
+                if old_pm == "forex" and new_payment_method == "forex":
+                    forex_delta = new_amount - old_amount
+                elif old_pm == "forex" and new_payment_method != "forex":
+                    forex_delta = -old_amount
+                elif old_pm != "forex" and new_payment_method == "forex":
+                    forex_delta = new_amount
+                else:
+                    forex_delta = 0.0
+                if abs(forex_delta) > 1e-9:
+                    cur.execute(
+                        "UPDATE forex_cards SET spent_amount = MAX(0, spent_amount + ?), updated_at=(strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE currency=?",
+                        (forex_delta, currency),
+                    )
 
     def delete_expense_with_budget(self, expense_id: int) -> None:
         """Delete an expense and decrement budget spent atomically.
@@ -191,13 +236,15 @@ class Database:
             cur = conn.cursor()
             # Fetch amount & currency first
             cur.execute(
-                "SELECT amount, currency FROM expenses WHERE id=?", (expense_id,)
+                "SELECT amount, currency, payment_method FROM expenses WHERE id=?",
+                (expense_id,),
             )
             row = cur.fetchone()
             if not row:
                 raise ValueError("expense not found")
             amount = float(row["amount"])
             currency = row["currency"]
+            payment_method = row["payment_method"]
             # Delete expense
             cur.execute("DELETE FROM expenses WHERE id=?", (expense_id,))
             if cur.rowcount == 0:
@@ -212,6 +259,16 @@ class Database:
                 "UPDATE budgets SET spent_amount = MAX(0, spent_amount - ?), updated_at=(strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE currency=?",
                 (amount, currency),
             )
+            # (T06.03) If deleted expense was forex, decrement forex card spent
+            if payment_method == "forex" and currency in FOREX_CURRENCIES:
+                cur.execute(
+                    "INSERT OR IGNORE INTO forex_cards (currency, loaded_amount, spent_amount) VALUES (?, 0, 0)",
+                    (currency,),
+                )
+                cur.execute(
+                    "UPDATE forex_cards SET spent_amount = MAX(0, spent_amount - ?), updated_at=(strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE currency=?",
+                    (amount, currency),
+                )
 
     def get_expense(self, expense_id: int) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
