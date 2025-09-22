@@ -32,7 +32,7 @@ Phase Mapping: Phase 1 (Core + Budget + Logging), Phase 2 (Analytics + Exchange 
 | ID | Task | Sub Task | Priority | Description | Dependencies | Status | What Was Done | What Should Be Tested |
 |----|------|----------|----------|-------------|--------------|--------|---------------|-----------------------|
 | T01.01 | Project Init | Repo structure | P0 | Create FastAPI project skeleton (`app/`), config module, main entry. |  | Done | Created `app/` with `__init__.py`, `core/config.py` (pydantic Settings), `routers/health.py`, and `main.py` with `create_app()` & root + /health endpoints. | App starts, `/health` returns 200. |
-| T01.02 | Project Init | Dependency mgmt | P0 | Add `requirements.txt` (FastAPI, Uvicorn, Jinja2, pydantic, httpx). | T01.01 | Not Started |  | All deps install; server runs. |
+| T01.02 | Project Init | Dependency mgmt | P0 | Add `requirements.txt` (FastAPI, Uvicorn, Jinja2, pydantic, httpx). | T01.01 | Done | Added `requirements.txt` with pinned versions: fastapi 0.111.0, uvicorn[standard] 0.30.0, jinja2 3.1.4, httpx 0.27.0, pydantic 1.10.15, python-multipart 0.0.9; import smoke test passed. | All deps install; server runs. |
 | T01.03 | Config | Settings loader | P1 | Centralize env/settings (rates cache TTL, DB path). | T01.01 | Not Started |  | Override via env vars works. |
 | T01.04 | Infra | Logging setup | P1 | Structured logging (info, warn, error). | T01.01 | Not Started |  | Logs appear with request id. |
 | T01.05 | Infra | Error handlers | P1 | Global exception handlers for 404, validation, 500. | T01.01 | Not Started |  | Proper JSON error payloads. |
