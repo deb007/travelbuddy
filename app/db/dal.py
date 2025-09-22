@@ -107,6 +107,112 @@ class Database:
             )
             return expense_id
 
+    def update_budget_delta(self, currency: str, delta: float) -> None:
+        """Atomic update of the budget spent amount for a given currency."""
+        with self._connect() as conn:
+            cur = conn.cursor()
+            # Ensure budget row exists
+            cur.execute(
+                "INSERT OR IGNORE INTO budgets (currency, max_amount, spent_amount) VALUES (?, 0, 0)",
+                (currency,),
+            )
+            # Update the spent amount atomically
+            cur.execute(
+                "UPDATE budgets SET spent_amount = spent_amount + ?, updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE currency = ?",
+                (delta, currency),
+            )
+
+    def update_expense_with_budget(
+        self,
+        expense_id: int,
+        new_amount: float,
+        new_category: str,
+        new_description: Optional[str],
+        new_date: date,
+        new_payment_method: str,
+        new_inr_equivalent: float,
+        new_exchange_rate: float,
+        budget_delta: float,
+    ) -> None:
+        """Update an expense and adjust budget spent atomically.
+
+        budget_delta = new_amount - old_amount (original currency units). May be negative.
+        Currency is assumed immutable at this stage (PATCH endpoint will enforce).
+        """
+        with self._connect() as conn:
+            cur = conn.cursor()
+            # Ensure the expense exists & get its currency for updating budget
+            cur.execute("SELECT currency FROM expenses WHERE id=?", (expense_id,))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("expense not found")
+            currency = row["currency"]
+            # Update expense
+            cur.execute(
+                """
+                UPDATE expenses
+                SET amount=?, category=?, description=?, date=?, payment_method=?,
+                    inr_equivalent=?, exchange_rate=?, updated_at=(strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+                WHERE id=?
+                """,
+                (
+                    new_amount,
+                    new_category,
+                    new_description,
+                    new_date.isoformat(),
+                    new_payment_method,
+                    new_inr_equivalent,
+                    new_exchange_rate,
+                    expense_id,
+                ),
+            )
+            if cur.rowcount == 0:
+                raise ValueError("expense not found")
+            # Adjust budget spent (ensure row exists first)
+            if abs(budget_delta) > 1e-9:
+                cur.execute(
+                    "INSERT OR IGNORE INTO budgets (currency, max_amount, spent_amount) VALUES (?, 0, 0)",
+                    (currency,),
+                )
+                cur.execute(
+                    "UPDATE budgets SET spent_amount = spent_amount + ?, updated_at=(strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE currency=?",
+                    (budget_delta, currency),
+                )
+
+    def delete_expense_with_budget(self, expense_id: int) -> None:
+        """Delete an expense and decrement budget spent atomically.
+
+        If the expense doesn't exist, raises ValueError. Spent amount is reduced
+        by the expense's original amount but never clamped below zero explicitly;
+        budgets table integrity (no negative spent) should be maintained by consumers
+        logging valid data. For safety, we clamp at SQL level using MAX().
+        """
+        with self._connect() as conn:
+            cur = conn.cursor()
+            # Fetch amount & currency first
+            cur.execute(
+                "SELECT amount, currency FROM expenses WHERE id=?", (expense_id,)
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("expense not found")
+            amount = float(row["amount"])
+            currency = row["currency"]
+            # Delete expense
+            cur.execute("DELETE FROM expenses WHERE id=?", (expense_id,))
+            if cur.rowcount == 0:
+                raise ValueError("expense not found")
+            # Ensure budget row exists (defensive)
+            cur.execute(
+                "INSERT OR IGNORE INTO budgets (currency, max_amount, spent_amount) VALUES (?, 0, 0)",
+                (currency,),
+            )
+            # Decrement spent but not below zero
+            cur.execute(
+                "UPDATE budgets SET spent_amount = MAX(0, spent_amount - ?), updated_at=(strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE currency=?",
+                (amount, currency),
+            )
+
     def get_expense(self, expense_id: int) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
             cur = conn.cursor()
