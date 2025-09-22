@@ -49,8 +49,8 @@ Phase Mapping: Phase 1 (Core + Budget + Logging), Phase 2 (Analytics + Exchange 
 ### E3 Budget & Forex Configuration
 | ID | Task | Sub Task | Priority | Description | Dependencies | Status | What Was Done | What Should Be Tested |
 |----|------|----------|----------|-------------|--------------|--------|---------------|-----------------------|
-| T03.01 | Budget | Budget table & seed | P0 | Store max & spent for INR/SGD/MYR. | T02.01 | Not Started |  | Defaults persisted. |
-| T03.02 | Budget | Budget update endpoint | P0 | POST/PUT to set/modify max budgets. | T03.01 | Not Started |  | Update persists; constraints. |
+| T03.01 | Budget | Budget table & seed | P0 | Store max & spent for INR/SGD/MYR. | T02.01 | Done | Added `db/seed.py` with `seed_budgets()` ensuring baseline rows (INR, SGD, MYR) inserted if missing; accepts optional max overrides; idempotent. | Defaults persisted. |
+| T03.02 | Budget | Budget update endpoint | P0 | POST/PUT to set/modify max budgets. | T03.01 | Done | Implemented `PUT /budgets/{currency}` in `routers/budgets.py` using `Database.set_budget_max` (upsert via ON CONFLICT). Returns `Budget` model with existing spent_amount preserved. Router registered in `main.py`. Smoke tested INR update (existing spent retained), and creation for SGD & MYR. | PUT with valid currency & positive max updates/creates row; spent_amount unchanged; invalid currency 400; max_amount must be > 0. |
 | T03.03 | Budget | Spent auto-update | P0 | Increment spent when expense logged (same currency). | T04.02 | Not Started |  | Spent matches sum of expenses. |
 | T03.04 | Budget | Remaining calc util | P0 | Helper returns remaining & thresholds (80%, 90%). | T03.03 | Not Started |  | Correct threshold flags. |
 

@@ -4,7 +4,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .core.config import get_settings
 from .core.logging import init_logging, request_context_middleware
 from .core import errors
-from .routers import health
+from .routers import health, budgets
 
 
 def create_app() -> FastAPI:
@@ -26,6 +26,7 @@ def create_app() -> FastAPI:
 
     # Routers
     app.include_router(health.router)
+    app.include_router(budgets.router)
 
     @app.get("/")
     async def root():
