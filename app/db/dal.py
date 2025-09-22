@@ -14,7 +14,7 @@ Design choices:
 from __future__ import annotations
 from pathlib import Path
 import sqlite3
-from typing import Iterable, List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from datetime import date
 
 from app.models import ExpenseIn
@@ -58,6 +58,54 @@ class Database:
                 ),
             )
             return cur.lastrowid
+
+    def insert_expense_with_budget(
+        self,
+        expense: ExpenseIn,
+        inr_equivalent: float,
+        exchange_rate: float,
+    ) -> int:
+        """Insert expense and increment matching budget spent atomically.
+
+        T03.03 (Budget Spent Auto-Update): This consolidates logic so the
+        upcoming expense creation endpoint (T04.02) only needs to compute
+        INR equivalent + exchange rate and call this method. Both the
+        expense row insertion and budget spent increment happen within the
+        same transaction to maintain consistency.
+        """
+        with self._connect() as conn:
+            cur = conn.cursor()
+            # 1. Ensure budget row exists (idempotent)
+            cur.execute(
+                "INSERT OR IGNORE INTO budgets (currency, max_amount, spent_amount) VALUES (?, 0, 0)",
+                (expense.currency,),
+            )
+            # 2. Insert expense
+            cur.execute(
+                """
+                INSERT INTO expenses (
+                    amount, currency, category, description, date, payment_method,
+                    inr_equivalent, exchange_rate
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    expense.amount,
+                    expense.currency,
+                    expense.category,
+                    expense.description,
+                    expense.date.isoformat(),
+                    expense.payment_method,
+                    inr_equivalent,
+                    exchange_rate,
+                ),
+            )
+            expense_id = cur.lastrowid
+            # 3. Increment spent
+            cur.execute(
+                "UPDATE budgets SET spent_amount = spent_amount + ?, updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE currency = ?",
+                (expense.amount, expense.currency),
+            )
+            return expense_id
 
     def get_expense(self, expense_id: int) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
@@ -121,6 +169,13 @@ class Database:
             cur.execute("SELECT * FROM budgets WHERE currency=?", (currency,))
             row = cur.fetchone()
             return dict(row) if row else None
+
+    def list_budgets(self) -> List[Dict[str, Any]]:
+        """Return all budget rows ordered by currency."""
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM budgets ORDER BY currency")
+            return [dict(r) for r in cur.fetchall()]
 
     # Aggregations -------------------------------------------------
     def daily_totals(
