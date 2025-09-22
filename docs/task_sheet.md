@@ -41,10 +41,10 @@ Phase Mapping: Phase 1 (Core + Budget + Logging), Phase 2 (Analytics + Exchange 
 | ID | Task | Sub Task | Priority | Description | Dependencies | Status | What Was Done | What Should Be Tested |
 |----|------|----------|----------|-------------|--------------|--------|---------------|-----------------------|
 | T02.01 | DB | SQLite schema design | P0 | Translate PRD models to SQL tables (expenses, budgets, forex_cards, exchange_rates, metadata). | T01.01 | Done | Implemented `db/schema.py` with idempotent DDL for: budgets, forex_cards, exchange_rates, expenses, metadata; added init_db() utility and verified table creation. | Tables created correctly. |
-| T02.02 | DB | Migration script | P0 | Simple bootstrap migration (idempotent create tables). | T02.01 | Not Started |  | Running twice is safe. |
-| T02.03 | Models | Pydantic models | P0 | ExpenseIn, ExpenseOut, Budget, ForexCard, RateRecord. | T02.01 | Not Started |  | Validation errors on bad input. |
-| T02.04 | DAL | CRUD utilities | P0 | Abstract DB access (insert expense, list, update spent). | T02.02 | Not Started |  | Insert/select roundtrip integrity. |
-| T02.05 | DAL | Aggregation queries | P1 | Helpers for sums by currency, category, date. | T02.04 | Not Started |  | Correct sums vs manual calc. |
+| T02.02 | DB | Migration script | P0 | Simple bootstrap migration (idempotent create tables). | T02.01 | Done | Added `db/migrate.py` with `apply_migrations()` calling `init_db()` and recording `schema_version=1` in metadata; idempotency test passes. | Running twice is safe; schema_version stays 1. |
+| T02.03 | Models | Pydantic models | P0 | ExpenseIn, ExpenseOut, Budget, ForexCard, RateRecord. | T02.01 | Done | Added `models/` package with constants and Pydantic models (validation for currencies, categories, payment methods, future-date prevention, threshold helpers, low balance). | Validation errors on bad input. |
+| T02.04 | DAL | CRUD utilities | P0 | Abstract DB access (insert expense, list, update spent). | T02.02 | Done | Added `db/dal.py` with `Database` class: connect helper, insert/get/list expenses (filters: date range, currency), increment/set budget helpers; smoke tested insert + list + budget spent update. | Insert/select roundtrip integrity. |
+| T02.05 | DAL | Aggregation queries | P1 | Helpers for sums by currency, category, date. | T02.04 | Done | Added aggregation methods to `Database`: `daily_totals()`, `sums_by_currency()`, `sums_by_category()` (with percent calc). Smoke tested with sample data. | Correct sums vs manual calc. |
 
 ### E3 Budget & Forex Configuration
 | ID | Task | Sub Task | Priority | Description | Dependencies | Status | What Was Done | What Should Be Tested |
