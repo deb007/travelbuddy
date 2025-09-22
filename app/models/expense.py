@@ -1,8 +1,8 @@
 from __future__ import annotations
-from pydantic import BaseModel, validator, Field
+from pydantic import BaseModel, validator, Field, root_validator
 from typing import Optional
 from datetime import date, datetime
-from .constants import CURRENCIES, PAYMENT_METHODS, CATEGORIES
+from .constants import CURRENCIES, PAYMENT_METHODS, CATEGORIES, FOREX_CURRENCIES
 
 
 class ExpenseIn(BaseModel):
@@ -37,6 +37,17 @@ class ExpenseIn(BaseModel):
         if v > today:
             raise ValueError("date cannot be in the future")
         return v
+
+    @root_validator
+    def cross_field_rules(cls, values):  # type: ignore[override]
+        pm = values.get("payment_method")
+        currency = values.get("currency")
+        # Rule: forex payment method only valid for supported forex currencies
+        if pm == "forex" and currency and currency not in FOREX_CURRENCIES:
+            raise ValueError(
+                "forex payment method only allowed for SGD or MYR expenses"
+            )
+        return values
 
 
 class ExpenseOut(ExpenseIn):

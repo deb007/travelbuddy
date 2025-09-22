@@ -57,7 +57,7 @@ Phase Mapping: Phase 1 (Core + Budget + Logging), Phase 2 (Analytics + Exchange 
 ### E4 Expense Logging Core
 | ID | Task | Sub Task | Priority | Description | Dependencies | Status | What Was Done | What Should Be Tested |
 |----|------|----------|----------|-------------|--------------|--------|---------------|-----------------------|
-| T04.01 | Expense | Validation rules | P0 | Validate currency, category, payment method, date range. | T02.03 | Not Started |  | Reject invalid combos. |
+| T04.01 | Expense | Validation rules | P0 | Validate currency, category, payment method, date range. | T02.03 | Done | Expanded categories per PRD (visa_fees, insurance, forex, sim, other); added cross-field rule (forex payment only for SGD/MYR) via root validator; scaffolded `services/expense_validation.py` for future trip date constraints. Smoke tested valid/invalid cases. | Reject invalid combos incl. forex+INR; category whitelist enforced. |
 | T04.02 | Expense | Create endpoint | P0 | POST /expenses creates record & INR equivalent. | T07.03, T04.01 | Not Started |  | 201 response; stored data exact. |
 | T04.03 | Expense | List endpoint | P0 | GET /expenses (filters: date range, currency, phase). | T04.02 | Not Started |  | Filter accuracy. |
 | T04.04 | Expense | Edit endpoint | P1 | PATCH /expenses/{id} adjust amounts & budgets delta. | T04.02, T03.03 | Not Started |  | Budgets recalc on edit. |
