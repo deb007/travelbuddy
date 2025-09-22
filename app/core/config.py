@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     exchange_api_base_url: AnyHttpUrl = "https://api.exchangerate-api.com/v4/latest"  # placeholder; final path may append base currency
     http_timeout_seconds: float = 5.0
 
+    # Exchange rate provider (T07.01)
+    # Allowed: 'static' (built-in fixed placeholders), 'external-placeholder' (hook for future real API)
+    exchange_rate_provider: str = "static"
+
     # Feature toggles / future
     enable_rate_override: bool = True
 
@@ -38,6 +42,12 @@ class Settings(BaseSettings):
             self.db_path = self.data_dir / self.db_filename
         # Ensure persistence directory exists
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        # Normalize / validate provider
+        allowed = {"static", "external-placeholder", "external-http"}
+        if self.exchange_rate_provider not in allowed:
+            raise ValueError(
+                f"Unsupported exchange_rate_provider '{self.exchange_rate_provider}'. Allowed: {allowed}"
+            )
 
 
 @lru_cache
