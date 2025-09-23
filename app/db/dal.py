@@ -303,6 +303,27 @@ class Database:
             rows = cur.fetchall()
             return [dict(r) for r in rows]
 
+    # Lightweight aggregation helpers (T08.02) ------------------
+    def total_inr_spent(self) -> float:
+        """Return total INR equivalent spent across all expenses (0.0 if none)."""
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COALESCE(ROUND(SUM(inr_equivalent), 2), 0.0) FROM expenses"
+            )
+            val = cur.fetchone()[0]
+            return float(val or 0.0)
+
+    def earliest_expense_date(self) -> Optional[date]:
+        """Return the earliest expense date or None if no expenses."""
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT MIN(date) FROM expenses")
+            row = cur.fetchone()
+            if not row or row[0] is None:
+                return None
+            return date.fromisoformat(row[0])
+
     # Budget helpers ------------------------------------------------
     def increment_budget_spent(self, currency: str, delta: float) -> None:
         """Increment spent_amount for a currency. Creates row if missing."""
