@@ -15,6 +15,7 @@ from app.services.rates.cache_service import (
     get_central_rate_cache_service,
     CentralRateCacheService,
 )
+from app.services.rates.conversion import compute_inr_equivalent
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 
@@ -67,13 +68,10 @@ async def create_expense(
     # 1. Domain validation hook (trip date boundaries etc. later)
     validate_expense_domain(payload)
 
-    # 2. Compute INR equivalent (stub rate service)
-    if payload.currency == "INR":
-        inr_equivalent = payload.amount
-        exchange_rate = 1.0
-    else:
-        exchange_rate = rate_service.get_rate(payload.currency)
-        inr_equivalent = rate_service.compute_inr(payload.amount, payload.currency)
+    # 2. Compute INR equivalent via centralized utility (T07.05)
+    conv = compute_inr_equivalent(payload.amount, payload.currency, rate_service)
+    exchange_rate = conv.rate
+    inr_equivalent = conv.inr_equivalent
 
     # 3. Persist (atomic budget spent increment via dedicated DAL method; T06.03 also updates forex card spent for forex payment)
     try:
@@ -191,13 +189,9 @@ async def patch_expense(
     # 4. Determine amount delta & recompute INR equivalent if amount changed
     new_amount = merged.amount
     budget_delta = new_amount - original_amount
-    if currency == "INR":
-        new_exchange_rate = 1.0
-        new_inr_equivalent = new_amount
-    else:
-        # Recompute only if amount changed; but simplest is always recompute for currency consistency
-        new_exchange_rate = rate_service.get_rate(currency)
-        new_inr_equivalent = rate_service.compute_inr(new_amount, currency)
+    conv = compute_inr_equivalent(new_amount, currency, rate_service)
+    new_exchange_rate = conv.rate
+    new_inr_equivalent = conv.inr_equivalent
 
     # 5. Persist atomically (T06.03: adjusts forex card spent deltas when payment method changes or amount changes)
     try:

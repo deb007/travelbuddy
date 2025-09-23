@@ -43,6 +43,12 @@ class _CacheEntry:
     fetched_at: datetime
 
 
+@dataclass
+class _OverrideEntry:
+    rate: float
+    expires_at: datetime
+
+
 class CentralRateCacheService:
     """Cached rate service with TTL-bound entries.
 
@@ -56,6 +62,8 @@ class CentralRateCacheService:
         self._underlying = RateServiceFacade(provider)
         self._ttl = timedelta(seconds=self._settings.rates_cache_ttl_seconds)
         self._cache: Dict[str, _CacheEntry] = {}
+        # Manual overrides (T07.04). Keyed by currency upper.
+        self._overrides: Dict[str, _OverrideEntry] = {}
 
     # Internal --------------------------------------------------
     def _is_entry_valid(self, entry: _CacheEntry) -> bool:
@@ -78,9 +86,41 @@ class CentralRateCacheService:
         return 1.0
 
     # Public API -----------------------------------------------
+    def _purge_expired_overrides(self) -> None:
+        now = datetime.utcnow()
+        expired = [k for k, v in self._overrides.items() if v.expires_at <= now]
+        for k in expired:
+            self._overrides.pop(k, None)
+
+    # Manual override API (T07.04) -----------------------------
+    def set_override(self, currency: str, rate: float, ttl_seconds: int) -> None:
+        currency = currency.upper()
+        if rate <= 0:
+            raise ValueError("override rate must be positive")
+        if ttl_seconds <= 0:
+            raise ValueError("override ttl must be positive seconds")
+        self._overrides[currency] = _OverrideEntry(
+            rate=rate, expires_at=datetime.utcnow() + timedelta(seconds=ttl_seconds)
+        )
+
+    def clear_override(self, currency: str) -> bool:
+        currency = currency.upper()
+        return self._overrides.pop(currency, None) is not None
+
+    def list_overrides(self) -> Dict[str, Dict[str, str | float]]:
+        self._purge_expired_overrides()
+        return {
+            c: {"rate": v.rate, "expires_at": v.expires_at.isoformat()}
+            for c, v in self._overrides.items()
+        }
+
     def get_rate(self, currency: str) -> float:
         if currency.upper() == "INR":
             return 1.0
+        self._purge_expired_overrides()
+        ov = self._overrides.get(currency.upper())
+        if ov:
+            return ov.rate
         return self._get_cached_or_refresh(currency)
 
     def compute_inr(self, amount: float, currency: str) -> float:
