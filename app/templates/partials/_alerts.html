@@ -1,0 +1,24 @@
+{% macro alert_row(alert) -%}
+{# alert: {type, currency, level, message} #}
+<div
+    class="flex items-start gap-3 rounded-md border px-3 py-2 text-[11px] leading-snug shadow-sm
+    {{ 'border-red-500/40 bg-red-900/30 text-red-200' if alert.level=='danger' else 'border-amber-500/40 bg-amber-900/30 text-amber-200' }}">
+    <span class="mt-0.5 inline-block w-2.5 h-2.5 rounded-full shrink-0
+      {{ 'bg-red-400 animate-pulse' if alert.level=='danger' else 'bg-amber-400 animate-pulse' }}"></span>
+    <div>
+        <span class="font-semibold tracking-wide uppercase mr-1">{{ alert.type }}</span>
+        <span>{{ alert.message }}</span>
+    </div>
+</div>
+{%- endmacro %}
+
+{% if alerts %}
+<section class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60 mb-6">
+    <h2 class="text-[0.8rem] font-semibold uppercase tracking-wide text-slate-300 mb-3 flex items-center gap-2">Alerts
+        <span class="text-[10px] font-normal text-slate-500">{{ alerts|length }}</span>
+    </h2>
+    <div class="space-y-2">
+        {% for a in alerts %}{{ alert_row(a) }}{% endfor %}
+    </div>
+</section>
+{% endif %}

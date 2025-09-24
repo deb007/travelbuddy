@@ -1,7 +1,7 @@
 <header
-    class="sticky top-0 z-40 backdrop-blur bg-slate-900/70 border-b border-slate-700/70 px-5 py-3 flex items-center gap-8 shadow-sm">
-    <div class="font-semibold tracking-wide text-sm text-slate-100">Travel Expense Tracker</div>
-    <nav class="flex gap-5 text-sm text-slate-300">
+    class="sticky top-0 z-40 backdrop-blur bg-slate-900/70 border-b border-slate-700/70 px-4 sm:px-5 py-3 flex flex-wrap items-center gap-4 sm:gap-8 shadow-sm">
+    <div class="font-semibold tracking-wide text-sm text-slate-100 shrink-0">Travel Expense Tracker</div>
+    <nav class="flex flex-wrap gap-3 sm:gap-5 text-sm text-slate-300">
         {% set path = request.url.path %}
         {% macro nav_link(url, label) -%}
         <a href="{{ url }}"
@@ -18,11 +18,20 @@
         {{ nav_link('/ui/forex', 'Forex') }}
     </nav>
     <div class="flex-1"></div>
-    {% if current_phase %}
-    <div class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white shadow {{ 'bg-amber-600' if current_phase == 'pre-trip' else 'bg-blue-600' }}"
-        title="Current phase derived from trip dates">
-        <span class="w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse"></span>
-        {{ current_phase | replace('-', ' ') }}
+    <div class="flex items-center gap-2 sm:gap-3 mt-2 sm:mt-0">
+        {% if alerts_count and alerts_count > 0 %}
+        <div class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white shadow bg-red-600"
+            title="Active alerts">
+            <span class="w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse"></span>
+            {{ alerts_count }} alert{{ '' if alerts_count == 1 else 's' }}
+        </div>
+        {% endif %}
+        {% if current_phase %}
+        <div class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white shadow {{ 'bg-amber-600' if current_phase == 'pre-trip' else 'bg-blue-600' }}"
+            title="Current phase derived from trip dates">
+            <span class="w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse"></span>
+            {{ current_phase | replace('-', ' ') }}
+        </div>
+        {% endif %}
     </div>
-    {% endif %}
 </header>

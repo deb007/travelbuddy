@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+{% block title %}Expenses · TravelBuddy{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4 gap-4 flex-wrap">
+    <div>
+        <h1 class="text-xl font-semibold mb-1">Expenses</h1>
+        <p class="text-slate-400 text-sm">Recent expenses grouped by date (newest first).</p>
+    </div>
+    <div class="flex items-center gap-2">
+        <a href="/ui/expenses/new"
+            class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm px-4 py-2 rounded-md shadow-sm transition-colors">+
+            New Expense</a>
+        <a href="/ui" class="text-slate-400 text-xs hover:text-white">← Dashboard</a>
+    </div>
+</div>
+
+{% if expenses %}
+<div class="space-y-8">
+    {% for group in expenses %}
+    <section>
+        <h2 class="text-sm font-semibold tracking-wide text-slate-300 mb-3 flex items-center gap-2">
+            <span>{{ group.date }}</span>
+            <span class="text-[10px] font-normal text-slate-500">₹ {{ group.day_total_inr }} INR</span>
+        </h2>
+        <div class="overflow-x-auto -mx-2 hidden sm:block">
+            <table class="w-full text-xs min-w-[760px] mx-2 border-separate border-spacing-y-1">
+                <thead>
+                    <tr class="text-[10px] uppercase tracking-wide text-slate-400">
+                        <th class="text-left font-medium">ID</th>
+                        <th class="text-left font-medium">Category</th>
+                        <th class="text-right font-medium">Amount</th>
+                        <th class="text-left font-medium">Cur</th>
+                        <th class="text-right font-medium">₹ Equiv</th>
+                        <th class="text-left font-medium">Pay</th>
+                        <th class="text-left font-medium">Description</th>
+                        <th class="text-right font-medium">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="text-[11px]">
+                    {% for e in group.entries %}
+                    <tr class="odd:bg-slate-800/40 hover:bg-slate-700/40 transition-colors align-top">
+                        <td class="py-1 pr-2">{{ e.id }}</td>
+                        <td class="py-1 pr-2">{{ e.category }}</td>
+                        <td class="py-1 pr-2 text-right">{{ '%.2f'|format(e.amount) }}</td>
+                        <td class="py-1 pr-2">{{ e.currency }}</td>
+                        <td class="py-1 pr-2 text-right">{{ '%.2f'|format(e.inr_equivalent) }}</td>
+                        <td class="py-1 pr-2">{{ e.payment_method }}</td>
+                        <td class="py-1 pr-4 max-w-[220px] truncate" title="{{ e.description or '' }}">{{ e.description
+                            or '' }}</td>
+                        <td class="py-1 pr-2 text-right">
+                            <div class="inline-flex items-center gap-2">
+                                <a href="/ui/expenses/{{ e.id }}/edit"
+                                    class="text-blue-400 hover:text-blue-300">Edit</a>
+                                <form method="post" action="/ui/expenses/{{ e.id }}/delete"
+                                    onsubmit="return confirm('Delete expense #{{ e.id }}?');">
+                                    <button type="submit" class="text-red-400 hover:text-red-300">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <!-- Mobile stacked list -->
+        <div class="sm:hidden space-y-2">
+            {% for e in group.entries %}
+            <div
+                class="rounded-md border border-slate-700/60 bg-slate-800/60 px-3 py-2 text-[11px] flex flex-col gap-1 shadow-sm">
+                <div class="flex justify-between items-center">
+                    <div class="font-semibold text-slate-200">₹ {{ '%.2f'|format(e.inr_equivalent) }}</div>
+                    <div class="text-[10px] text-slate-400">#{{ e.id }}</div>
+                </div>
+                <div class="flex flex-wrap gap-x-3 gap-y-1 text-[10px] uppercase tracking-wide text-slate-400">
+                    <span>{{ e.currency }} {{ '%.2f'|format(e.amount) }}</span>
+                    <span>{{ e.category }}</span>
+                    <span>{{ e.payment_method }}</span>
+                </div>
+                {% if e.description %}
+                <div class="text-[11px] text-slate-300 leading-snug">{{ e.description }}</div>
+                {% endif %}
+                <div class="flex gap-4 pt-1">
+                    <a href="/ui/expenses/{{ e.id }}/edit" class="text-blue-400 hover:text-blue-300">Edit</a>
+                    <form method="post" action="/ui/expenses/{{ e.id }}/delete"
+                        onsubmit="return confirm('Delete expense #{{ e.id }}?');">
+                        <button type="submit" class="text-red-400 hover:text-red-300">Delete</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-sm text-slate-500">No expenses logged yet. <a href="/ui/expenses/new"
+        class="text-blue-400 hover:text-blue-300">Create your first one</a>.</p>
+{% endif %}
+
+{% endblock %}

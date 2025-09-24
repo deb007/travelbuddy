@@ -7,7 +7,9 @@
 <h1 class="text-xl font-semibold mb-1">Dashboard</h1>
 <p class="text-slate-400 text-sm mb-6">Snapshot of trip finances.</p>
 
-<section class="grid gap-5 md:grid-cols-3 mb-6 auto-rows-fr">
+{% include 'partials/_alerts.html' %}
+
+<section class="grid gap-4 sm:gap-5 md:grid-cols-3 mb-6 auto-rows-fr">
     <div
         class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60 hover:border-slate-600/60 transition-colors">
         <h2 class="text-[0.8rem] font-semibold uppercase tracking-wide text-slate-300 mb-2">Average Daily Spend</h2>
@@ -46,7 +48,7 @@
     {% endif %}
 </section>
 
-<section class="grid gap-5 md:grid-cols-2">
+<section class="grid gap-4 sm:gap-5 md:grid-cols-2">
     <div class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60">
         <h3 class="text-[0.8rem] font-semibold uppercase tracking-wide text-slate-300 mb-2">Currency Breakdown</h3>
         {% if currency_breakdown %}

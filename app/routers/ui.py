@@ -3,13 +3,14 @@ from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi import HTTPException
-from typing import List
+from typing import List, Optional
 from pydantic import ValidationError
 
 from app.core.config import get_settings
 from app.db.dal import Database
 from app.services.timeline import get_trip_dates, resolve_phase
 from app.services.budget_utils import list_budget_statuses
+from app.services.forex_utils import list_status as list_forex_status
 from app.services.analytics_utils import (
     compute_average_daily_spend,
     compute_remaining_daily_budget,
@@ -18,9 +19,10 @@ from app.services.analytics_utils import (
 )
 from app.services.rates.cache_service import get_central_rate_cache_service
 from app.models.constants import CURRENCIES, CATEGORIES, PAYMENT_METHODS
-from app.models.expense import ExpenseIn
+from app.models.expense import ExpenseIn, ExpenseUpdateIn
 from app.services.expense_validation import validate_expense_domain
 from app.services.rates.conversion import compute_inr_equivalent
+from app.services.money import round2
 
 router = APIRouter(tags=["ui"])
 
@@ -62,6 +64,43 @@ async def ui_home(request: Request, db: Database = Depends(get_db)):
         except Exception:
             rates.append({"currency": cur, "rate": "-"})
 
+    # Alerts aggregation (T09.06)
+    # Budget alerts: warn at >=80% (<90), danger at >=90
+    budget_alerts = []
+    for b in budgets:
+        if b["ninety"]:
+            budget_alerts.append(
+                {
+                    "type": "budget",
+                    "currency": b["currency"],
+                    "level": "danger",
+                    "message": f"{b['currency']} budget at {b['percent_used']}% (>=90%)",
+                }
+            )
+        elif b["eighty"]:
+            budget_alerts.append(
+                {
+                    "type": "budget",
+                    "currency": b["currency"],
+                    "level": "warn",
+                    "message": f"{b['currency']} budget at {b['percent_used']}% (>=80%)",
+                }
+            )
+    # Forex card alerts: low balance flag
+    forex_rows = db.list_forex_cards()
+    forex_cards = list_forex_status(forex_rows)
+    forex_alerts = [
+        {
+            "type": "forex",
+            "currency": c["currency"],
+            "level": "warn",  # single severity for MVP
+            "message": f"{c['currency']} forex remaining {c['percent_remaining']}% (<20%)",
+        }
+        for c in forex_cards
+        if c["low_balance"]
+    ]
+    alerts = budget_alerts + forex_alerts
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -74,6 +113,8 @@ async def ui_home(request: Request, db: Database = Depends(get_db)):
             "currency_breakdown": currency_breakdown,
             "category_breakdown": category_breakdown,
             "rates": rates,
+            "alerts": alerts,
+            "alerts_count": len(alerts),
         },
     )
 
@@ -206,5 +247,242 @@ async def ui_expense_form_submit(
             "form": form_state,
             "success": success,
             "created_expense": created_expense,
+        },
+    )
+
+
+@router.get("/ui/expenses", response_class=HTMLResponse)
+async def ui_expenses_list(request: Request, db: Database = Depends(get_db)):
+    phase = compute_phase(db)
+    settings = get_settings()
+    rows = db.list_expenses()
+    grouped = group_expenses_by_date(rows)
+
+    return templates.TemplateResponse(
+        "expenses_list.html",
+        {
+            "request": request,
+            "current_phase": phase,
+            "version": settings.version,
+            "expenses": grouped,
+        },
+    )
+
+
+def _build_expense_form_context(
+    request: Request,
+    phase: str,
+    version: str,
+    errors: List[str],
+    form_state: dict,
+    success: bool = False,
+    expense_id: Optional[int] = None,
+    updated: bool = False,
+):
+    return {
+        "request": request,
+        "current_phase": phase,
+        "version": version,
+        "currencies": sorted(CURRENCIES),
+        "categories": sorted(CATEGORIES),
+        "payment_methods": sorted(PAYMENT_METHODS),
+        "errors": errors,
+        "form": form_state,
+        "success": success,
+        "expense_id": expense_id,
+        "updated": updated,
+        "editing": expense_id is not None,
+    }
+
+
+def group_expenses_by_date(rows: List[dict]):
+    """Group expense rows by date (descending as provided) computing per-day INR total.
+
+    Expects rows already ordered by date DESC, id DESC (as returned by DAL list_expenses).
+    Returns list of {date, entries: [...], day_total_inr} preserving ordering.
+    """
+    grouped: List[dict] = []
+    current_bucket: Optional[dict] = None
+    current_date: Optional[str] = None
+    day_total = 0.0
+    for r in rows:
+        d = r["date"]
+        if d != current_date:
+            if current_bucket is not None:
+                current_bucket["day_total_inr"] = round2(day_total)
+                grouped.append(current_bucket)
+            current_date = d
+            current_bucket = {"date": d, "entries": [], "day_total_inr": 0.0}
+            day_total = 0.0
+        current_bucket["entries"].append(r)
+        try:
+            day_total += float(r.get("inr_equivalent", 0.0))
+        except Exception:  # pragma: no cover - defensive
+            pass
+    if current_bucket is not None:
+        current_bucket["day_total_inr"] = round2(day_total)
+        grouped.append(current_bucket)
+    return grouped
+
+
+@router.get("/ui/expenses/{expense_id}/edit", response_class=HTMLResponse)
+async def ui_expense_edit_form(
+    request: Request, expense_id: int, db: Database = Depends(get_db)
+):
+    phase = compute_phase(db)
+    settings = get_settings()
+    row = db.get_expense(expense_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    form_state = {
+        "amount": row["amount"],
+        "currency": row["currency"],
+        "category": row["category"],
+        "payment_method": row["payment_method"],
+        "date": row["date"],
+        "description": row.get("description"),
+    }
+    ctx = _build_expense_form_context(
+        request,
+        phase,
+        settings.version,
+        errors=[],
+        form_state=form_state,
+        expense_id=expense_id,
+    )
+    return templates.TemplateResponse("expense_form.html", ctx)
+
+
+@router.post("/ui/expenses/{expense_id}/edit", response_class=HTMLResponse)
+async def ui_expense_edit_submit(
+    request: Request,
+    expense_id: int,
+    amount: float = Form(...),
+    category: str = Form(...),
+    payment_method: str = Form(...),
+    date: str = Form(...),
+    description: str | None = Form(None),
+    db: Database = Depends(get_db),
+):
+    phase = compute_phase(db)
+    settings = get_settings()
+    row = db.get_expense(expense_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    errors: List[str] = []
+
+    # Immutable currency (enforced by form absence) - we reuse existing
+    currency = row["currency"]
+
+    from datetime import date as date_cls
+
+    try:
+        parsed_date = date_cls.fromisoformat(date)
+    except ValueError:
+        errors.append("Invalid date format")
+        parsed_date = None
+
+    # Build update model (partial fields allowed but we supply all)
+    if parsed_date:
+        try:
+            update_in = ExpenseUpdateIn(
+                amount=amount,
+                category=category,
+                description=description if description else None,
+                date=parsed_date,
+                payment_method=payment_method,
+            )
+            # Domain validation again using temporary full object concept
+            temp_full = ExpenseIn(
+                amount=amount,
+                currency=currency,
+                category=category,
+                description=description if description else None,
+                date=parsed_date,
+                payment_method=payment_method,
+            )
+            validate_expense_domain(temp_full)
+        except ValidationError as ve:
+            for err in ve.errors():
+                loc = ".".join([str(p) for p in err.get("loc", [])])
+                msg = err.get("msg", "invalid")
+                errors.append(f"{loc}: {msg}")
+        except HTTPException as he:
+            errors.append(he.detail)
+        except Exception:
+            errors.append("Unexpected validation error")
+    else:
+        update_in = None
+
+    updated = False
+    if not errors and update_in:
+        try:
+            # Compute new INR equivalent & rate
+            rate_service = get_central_rate_cache_service()
+            conv = compute_inr_equivalent(amount, currency, rate_service)
+            budget_delta = amount - float(row["amount"])
+            db.update_expense_with_budget(
+                expense_id=expense_id,
+                new_amount=amount,
+                new_category=category,
+                new_description=description if description else None,
+                new_date=parsed_date,
+                new_payment_method=payment_method,
+                new_inr_equivalent=conv.inr_equivalent,
+                new_exchange_rate=conv.rate,
+                budget_delta=budget_delta,
+            )
+            updated = True
+            # Refresh row
+            row = db.get_expense(expense_id) or row
+        except Exception:
+            errors.append("Failed to update expense")
+
+    form_state = {
+        "amount": row["amount"],
+        "currency": row["currency"],
+        "category": row["category"],
+        "payment_method": row["payment_method"],
+        "date": row["date"],
+        "description": row.get("description"),
+    }
+
+    ctx = _build_expense_form_context(
+        request,
+        phase,
+        settings.version,
+        errors=errors,
+        form_state=form_state,
+        success=False,
+        expense_id=expense_id,
+        updated=updated,
+    )
+    return templates.TemplateResponse("expense_form.html", ctx)
+
+
+@router.post("/ui/expenses/{expense_id}/delete", response_class=HTMLResponse)
+async def ui_expense_delete(
+    request: Request, expense_id: int, db: Database = Depends(get_db)
+):
+    # Perform delete then redirect via simple HTML (no redirect helper to keep minimal deps)
+    try:
+        db.delete_expense_with_budget(expense_id)
+    except Exception:
+        # ignore errors to keep idempotent feel
+        pass
+    # After deletion route back to list
+    phase = compute_phase(db)
+    settings = get_settings()
+    rows = db.list_expenses()
+    grouped = group_expenses_by_date(rows)
+
+    return templates.TemplateResponse(
+        "expenses_list.html",
+        {
+            "request": request,
+            "current_phase": phase,
+            "version": settings.version,
+            "expenses": grouped,
+            "deleted_id": expense_id,
         },
     )
