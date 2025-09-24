@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pytest_cache
+.mypy_cache
+
+# Venvs
+venv/
+.venv/
+ENV/
+
+# Git / IDE
+.git
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts / caches
+.dist
+build/
+.eggs/
+*.egg-info
+
+# Node / front-end (if introduced later)
+node_modules/
+
+# Local data (mount a volume instead)
+data/
+
+# Logs
+*.log
+
+# Docker
+Dockerfile*
+.dockerignore
+
+# Misc
+scripts/*.pyc

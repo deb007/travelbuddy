@@ -1,0 +1,40 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: travelbuddy:latest
+    container_name: travelbuddy
+    environment:
+      # Override any pydantic settings (examples)
+      APP_NAME: "Travel Expense Tracker"
+      DEBUG: "false"  # set true for verbose logging
+      DATA_DIR: /data
+      # DB_FILENAME can be overridden if desired
+      # EXCHANGE_RATE_PROVIDER: static|external-placeholder|external-http
+    volumes:
+      - app_data:/data
+      # Optionally mount templates/static for iterative development
+      # - ./app/templates:/app/app/templates:ro
+      # - ./app/static:/app/app/static:ro
+    ports:
+      - "8005:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  app_data:
+    driver: local
+
+# Optional development override example (save as compose.dev.yml and run with -f compose.yml -f compose.dev.yml)
+# services:
+#   app:
+#     environment:
+#       DEBUG: "true"
+#     volumes:
+#       - ./app:/app/app
+#       - ./data:/data
