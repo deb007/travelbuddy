@@ -10,11 +10,17 @@ from __future__ import annotations
 from typing import Dict, Any, List, Optional
 
 from app.db.dal import Database
+from app.services.settings import get_thresholds
 
+# Deprecated constant kept for backward compatibility; dynamic values now
+# retrieved per-call from settings metadata. If settings unavailable, defaults
+# (80,90) from settings service will be returned.
 THRESHOLDS = (80, 90)
 
 
-def budget_status(row: Dict[str, Any]) -> Dict[str, Any]:
+def budget_status(
+    row: Dict[str, Any], warn_pct: int, danger_pct: int
+) -> Dict[str, Any]:
     max_amount = row.get("max_amount", 0) or 0
     spent = row.get("spent_amount", 0) or 0
     remaining = max(max_amount - spent, 0)
@@ -27,16 +33,28 @@ def budget_status(row: Dict[str, Any]) -> Dict[str, Any]:
         "spent_amount": float(spent),
         "remaining": round(float(remaining), 2),
         "percent_used": percent_used,
-        "eighty": percent_used >= THRESHOLDS[0] if max_amount > 0 else False,
-        "ninety": percent_used >= THRESHOLDS[1] if max_amount > 0 else False,
+        # Preserve legacy keys 'eighty' and 'ninety' for existing templates / callers.
+        "eighty": percent_used >= warn_pct if max_amount > 0 else False,
+        "ninety": percent_used >= danger_pct if max_amount > 0 else False,
+        # New generic keys aligned with settings naming.
+        "warn": percent_used >= warn_pct if max_amount > 0 else False,
+        "danger": percent_used >= danger_pct if max_amount > 0 else False,
+        "warn_threshold": warn_pct,
+        "danger_threshold": danger_pct,
     }
     return status
 
 
 def get_budget_status(db: Database, currency: str) -> Optional[Dict[str, Any]]:
     row = db.get_budget(currency)
-    return budget_status(row) if row else None
+    if not row:
+        return None
+    th = get_thresholds(db)
+    return budget_status(row, th.budget_warn, th.budget_danger)
 
 
 def list_budget_statuses(db: Database) -> List[Dict[str, Any]]:
-    return [budget_status(r) for r in db.list_budgets()]
+    th = get_thresholds(db)
+    return [
+        budget_status(r, th.budget_warn, th.budget_danger) for r in db.list_budgets()
+    ]

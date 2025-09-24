@@ -12,6 +12,28 @@ from app.services.timeline import get_trip_dates, resolve_phase
 from app.services.budget_utils import list_budget_statuses
 from app.services.forex_utils import list_status as list_forex_status
 from app.services.alerts import collect_alerts
+from app.services.settings import get_thresholds, set_thresholds
+from app.services.app_settings import (
+    get_effective_rate_provider,
+    set_rate_provider,
+    get_rates_cache_ttl,
+    set_rates_cache_ttl,
+    get_budget_enforce_cap,
+    set_budget_enforce_cap,
+    get_budget_auto_create,
+    set_budget_auto_create,
+    get_default_budget_amounts,
+    set_default_budget_amount,
+    get_ui_theme,
+    set_ui_theme,
+    get_ui_show_day_totals,
+    set_ui_show_day_totals,
+    get_ui_expense_layout,
+    set_ui_expense_layout,
+    get_widget_flag,
+    set_widget_flag,
+)
+from app.models.constants import FOREX_CURRENCIES
 from app.services.analytics_utils import (
     compute_average_daily_spend,
     compute_remaining_daily_budget,
@@ -370,6 +392,258 @@ def group_expenses_by_date(rows: List[dict]):
         current_bucket["day_total_inr"] = round2(day_total)
         grouped.append(current_bucket)
     return grouped
+
+
+@router.get("/ui/settings", response_class=HTMLResponse)
+async def ui_settings(request: Request, db: Database = Depends(get_db)):
+    """Settings page for trip dates, dynamic thresholds, and forex loads.
+
+    Displays current values with forms for each logical section. POST handler
+    re-renders same template with success/error messages.
+    """
+    phase = compute_phase(db)
+    settings = get_settings()
+    alerts = collect_alerts(db)
+    trip_dates = db.get_trip_dates()
+    th = get_thresholds(db)
+    existing_rows = {
+        r["currency"]: r
+        for r in db.list_forex_cards()
+        if r["currency"] in FOREX_CURRENCIES
+    }
+    # Ensure all supported forex currencies appear with default placeholders
+    forex_rows = {}
+    for cur in sorted(FOREX_CURRENCIES):
+        forex_rows[cur] = existing_rows.get(
+            cur,
+            {"currency": cur, "loaded_amount": 0.0, "spent_amount": 0.0},
+        )
+    # Additional dynamic settings context
+    rate_provider = get_effective_rate_provider(db)
+    rate_ttl = get_rates_cache_ttl(db)
+    budget_flags = {
+        "enforce_cap": get_budget_enforce_cap(db),
+        "auto_create": get_budget_auto_create(db),
+        "defaults": get_default_budget_amounts(db),
+    }
+    ui_prefs = {
+        "theme": get_ui_theme(db),
+        "show_day_totals": get_ui_show_day_totals(db),
+        "expense_layout": get_ui_expense_layout(db),
+        "widgets": {
+            "budgets": get_widget_flag(db, "budgets", True),
+            "rates": get_widget_flag(db, "rates", True),
+            "categories": get_widget_flag(db, "categories", True),
+            "currencies": get_widget_flag(db, "currencies", True),
+        },
+    }
+    return templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "current_phase": phase,
+            "version": settings.version,
+            "alerts_count": len(alerts),
+            "trip_dates": trip_dates,
+            "thresholds": th,
+            "forex_rows": forex_rows,
+            "messages": {},  # section -> list[str]
+            "errors": {},
+            "rate_provider": rate_provider,
+            "rate_ttl": rate_ttl,
+            "budget_flags": budget_flags,
+            "ui_prefs": ui_prefs,
+        },
+    )
+
+
+@router.post("/ui/settings", response_class=HTMLResponse)
+async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
+    phase = compute_phase(db)
+    settings = get_settings()
+    alerts = collect_alerts(db)
+    form = await request.form()
+    section = form.get("section", "").strip()
+    messages: dict[str, list[str]] = {}
+    errors: dict[str, list[str]] = {}
+
+    # Trip dates --------------------------------------------------
+    if section == "trip_dates":
+        start_raw = form.get("start_date") or ""
+        end_raw = form.get("end_date") or ""
+        import datetime as _dt
+
+        try:
+            start_d = _dt.date.fromisoformat(start_raw)
+            end_d = _dt.date.fromisoformat(end_raw)
+            if end_d < start_d:
+                raise ValueError("End date must be >= start date")
+            db.set_trip_dates(start_d, end_d)
+            messages.setdefault("trip_dates", []).append("Trip dates updated")
+        except Exception as exc:  # pragma: no cover (UI validation path)
+            errors.setdefault("trip_dates", []).append(str(exc) or "Invalid trip dates")
+
+    # Thresholds --------------------------------------------------
+    elif section == "thresholds":
+        try:
+            budget_warn = int(form.get("budget_warn", ""))
+            budget_danger = int(form.get("budget_danger", ""))
+            forex_low = int(form.get("forex_low", ""))
+            set_thresholds(db, budget_warn, budget_danger, forex_low)
+            messages.setdefault("thresholds", []).append("Thresholds updated")
+        except ValueError as ve:
+            errors.setdefault("thresholds", []).append(str(ve))
+        except Exception:  # pragma: no cover
+            errors.setdefault("thresholds", []).append("Failed to update thresholds")
+
+    # Forex loads -------------------------------------------------
+    elif section == "forex_loads":
+        updated_any = False
+        for cur in sorted(FOREX_CURRENCIES):
+            key = f"loaded_{cur}"
+            if key in form and form.get(key) != "":
+                try:
+                    val = float(form.get(key))
+                    if val < 0:
+                        raise ValueError("Loaded amount cannot be negative")
+                    db.set_forex_card_loaded(cur, val)
+                    updated_any = True
+                except Exception as exc:
+                    errors.setdefault("forex_loads", []).append(f"{cur}: {exc}")
+        if updated_any and "forex_loads" not in errors:
+            messages.setdefault("forex_loads", []).append("Forex loads updated")
+        if not updated_any and "forex_loads" not in errors:
+            errors.setdefault("forex_loads", []).append("No forex values provided")
+
+    # New sections ----------------------------------------------
+    elif section == "rate_settings":
+        try:
+            provider = form.get("rate_provider", "").strip()
+            ttl_raw = form.get("rates_cache_ttl", "").strip()
+            if provider:
+                set_rate_provider(db, provider)
+                messages.setdefault("rate_settings", []).append("Rate provider updated")
+            if ttl_raw:
+                set_rates_cache_ttl(db, int(ttl_raw))
+                messages.setdefault("rate_settings", []).append("Cache TTL updated")
+        except ValueError as ve:
+            errors.setdefault("rate_settings", []).append(str(ve))
+        except Exception:
+            errors.setdefault("rate_settings", []).append(
+                "Failed to update rate settings"
+            )
+    elif section == "budget_settings":
+        try:
+            enforce = form.get("budget_enforce_cap") == "on"
+            auto_create = form.get("budget_auto_create") == "on"
+            set_budget_enforce_cap(db, enforce)
+            set_budget_auto_create(db, auto_create)
+            # Optional default budget inputs pattern: default_budget_<CUR>
+            for k, v in form.items():
+                if k.startswith("default_budget_") and v.strip() != "":
+                    cur = k.split("default_budget_")[-1].upper()
+                    try:
+                        amt = float(v)
+                        set_default_budget_amount(db, cur, amt)
+                    except Exception as exc:  # accumulate but continue
+                        errors.setdefault("budget_settings", []).append(f"{cur}: {exc}")
+            if "budget_settings" not in errors:
+                messages.setdefault("budget_settings", []).append(
+                    "Budget settings updated"
+                )
+        except Exception as exc:
+            errors.setdefault("budget_settings", []).append(
+                str(exc) or "Failed budget settings"
+            )
+    elif section == "ui_preferences":
+        try:
+            theme = form.get("ui_theme", "auto")
+            layout = form.get("ui_expense_layout", "detailed")
+            show_day_totals = form.get("ui_show_day_totals") == "on"
+            set_ui_theme(db, theme)
+            set_ui_expense_layout(db, layout)
+            set_ui_show_day_totals(db, show_day_totals)
+            for w in ("budgets", "rates", "categories", "currencies"):
+                set_widget_flag(db, w, form.get(f"widget_{w}") == "on")
+            messages.setdefault("ui_preferences", []).append("UI preferences updated")
+        except ValueError as ve:
+            errors.setdefault("ui_preferences", []).append(str(ve))
+        except Exception:
+            errors.setdefault("ui_preferences", []).append(
+                "Failed to update UI preferences"
+            )
+    elif section == "reset_trip":
+        from app.services.reset_utils import reset_trip_data
+
+        confirm = form.get("confirm_reset") == "on"
+        token = (form.get("confirm_token") or "").strip().lower()
+        preserve = form.get("preserve_settings") == "on"
+        if not confirm or token != "reset":
+            errors.setdefault("reset_trip", []).append(
+                "Confirmation required: tick the box and type 'reset'"
+            )
+        else:
+            try:
+                reset_trip_data(db, preserve_settings=preserve)
+                messages.setdefault("reset_trip", []).append(
+                    "Trip data cleared. Configure new trip dates to begin."
+                )
+            except Exception as exc:
+                errors.setdefault("reset_trip", []).append(str(exc) or "Reset failed")
+
+    # Refresh state after potential mutations (shared) -----------
+    trip_dates = db.get_trip_dates()
+    th = get_thresholds(db)
+    existing_rows = {
+        r["currency"]: r
+        for r in db.list_forex_cards()
+        if r["currency"] in FOREX_CURRENCIES
+    }
+    forex_rows = {}
+    for cur in sorted(FOREX_CURRENCIES):
+        forex_rows[cur] = existing_rows.get(
+            cur,
+            {"currency": cur, "loaded_amount": 0.0, "spent_amount": 0.0},
+        )
+
+    rate_provider = get_effective_rate_provider(db)
+    rate_ttl = get_rates_cache_ttl(db)
+    budget_flags = {
+        "enforce_cap": get_budget_enforce_cap(db),
+        "auto_create": get_budget_auto_create(db),
+        "defaults": get_default_budget_amounts(db),
+    }
+    ui_prefs = {
+        "theme": get_ui_theme(db),
+        "show_day_totals": get_ui_show_day_totals(db),
+        "expense_layout": get_ui_expense_layout(db),
+        "widgets": {
+            "budgets": get_widget_flag(db, "budgets", True),
+            "rates": get_widget_flag(db, "rates", True),
+            "categories": get_widget_flag(db, "categories", True),
+            "currencies": get_widget_flag(db, "currencies", True),
+        },
+    }
+
+    return templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "current_phase": phase,
+            "version": settings.version,
+            "alerts_count": len(alerts),
+            "trip_dates": trip_dates,
+            "thresholds": th,
+            "forex_rows": forex_rows,
+            "messages": messages,
+            "errors": errors,
+            "active_section": section,
+            "rate_provider": rate_provider,
+            "rate_ttl": rate_ttl,
+            "budget_flags": budget_flags,
+            "ui_prefs": ui_prefs,
+        },
+    )
 
 
 @router.get("/ui/expenses/{expense_id}/edit", response_class=HTMLResponse)

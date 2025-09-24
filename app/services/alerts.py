@@ -20,41 +20,45 @@ from typing import List, Dict, Any
 from app.db.dal import Database
 from app.services.budget_utils import list_budget_statuses
 from app.services.forex_utils import list_status as list_forex_status
+from app.services.settings import get_thresholds
 
 
 def collect_alerts(db: Database) -> List[Dict[str, Any]]:
     alerts: List[Dict[str, Any]] = []
 
-    # Budget alerts
+    th = get_thresholds(db)
+
+    # Budget alerts (dynamic thresholds)
     for b in list_budget_statuses(db):
-        if b["ninety"]:
+        if b["danger"]:
             alerts.append(
                 {
                     "type": "budget",
                     "currency": b["currency"],
                     "level": "danger",
-                    "message": f"{b['currency']} budget at {b['percent_used']}% (>=90%)",
+                    "message": f"{b['currency']} budget at {b['percent_used']}% (>={th.budget_danger}%)",
                 }
             )
-        elif b["eighty"]:
+        elif b["warn"]:
             alerts.append(
                 {
                     "type": "budget",
                     "currency": b["currency"],
                     "level": "warn",
-                    "message": f"{b['currency']} budget at {b['percent_used']}% (>=80%)",
+                    "message": f"{b['currency']} budget at {b['percent_used']}% (>={th.budget_warn}%)",
                 }
             )
 
-    # Forex alerts
-    for c in list_forex_status(db.list_forex_cards()):
+    # Forex alerts (dynamic threshold)
+    forex_rows = db.list_forex_cards()
+    for c in list_forex_status(forex_rows, forex_low_pct=th.forex_low):
         if c["low_balance"]:
             alerts.append(
                 {
                     "type": "forex",
                     "currency": c["currency"],
                     "level": "warn",
-                    "message": f"{c['currency']} forex remaining {c['percent_remaining']}% (<20%)",
+                    "message": f"{c['currency']} forex remaining {c['percent_remaining']}% (<{th.forex_low}%)",
                 }
             )
 

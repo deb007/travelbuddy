@@ -19,6 +19,7 @@ from datetime import date
 
 from app.models import ExpenseIn
 from app.models.constants import FOREX_CURRENCIES
+from app.services import app_settings
 
 
 class Database:
@@ -76,11 +77,36 @@ class Database:
         """
         with self._connect() as conn:
             cur = conn.cursor()
-            # 1. Ensure budget row exists (idempotent)
-            cur.execute(
-                "INSERT OR IGNORE INTO budgets (currency, max_amount, spent_amount) VALUES (?, 0, 0)",
-                (expense.currency,),
-            )
+            # Budget existence / auto-create / defaults
+            if app_settings.get_budget_auto_create(self):
+                # If auto-create is on, we may seed a default max_amount if configured
+                defaults = app_settings.get_default_budget_amounts(self)
+                default_max = float(defaults.get(expense.currency.upper(), 0.0))
+                cur.execute(
+                    "INSERT OR IGNORE INTO budgets (currency, max_amount, spent_amount) VALUES (?, ?, 0)",
+                    (expense.currency, default_max),
+                )
+            else:
+                # Ensure budget row exists OR enforce presence depending on policy
+                cur.execute(
+                    "SELECT max_amount, spent_amount FROM budgets WHERE currency=?",
+                    (expense.currency,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    raise ValueError("Budget row missing and auto-create disabled")
+            # If enforce cap, pre-check overflow
+            if app_settings.get_budget_enforce_cap(self):
+                cur.execute(
+                    "SELECT max_amount, spent_amount FROM budgets WHERE currency=?",
+                    (expense.currency,),
+                )
+                brow = cur.fetchone()
+                if brow is not None:
+                    max_amt = float(brow[0] or 0)
+                    spent_amt = float(brow[1] or 0)
+                    if max_amt > 0 and (spent_amt + expense.amount) > max_amt + 1e-9:
+                        raise ValueError("Budget cap exceeded")
             # 2. Insert expense
             cur.execute(
                 """
@@ -101,7 +127,7 @@ class Database:
                 ),
             )
             expense_id = cur.lastrowid
-            # 3. Increment spent
+            # 3. Increment spent (only if budget row exists)
             cur.execute(
                 "UPDATE budgets SET spent_amount = spent_amount + ?, updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE currency = ?",
                 (expense.amount, expense.currency),
@@ -166,6 +192,19 @@ class Database:
             currency = row["currency"]
             old_amount = float(row["amount"])
             old_pm = row["payment_method"]
+            # Update expense (pre-check if enforcing cap when amount increases)
+            if app_settings.get_budget_enforce_cap(self) and budget_delta > 0:
+                cur.execute(
+                    "SELECT max_amount, spent_amount FROM budgets WHERE currency=?",
+                    (currency,),
+                )
+                brow = cur.fetchone()
+                if brow is not None:
+                    max_amt = float(brow[0] or 0)
+                    spent_amt = float(brow[1] or 0)
+                    # spent will be adjusted by budget_delta; check overflow
+                    if max_amt > 0 and (spent_amt + budget_delta) > max_amt + 1e-9:
+                        raise ValueError("Budget cap exceeded")
             # Update expense
             cur.execute(
                 """

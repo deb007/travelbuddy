@@ -3,9 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
-from typing import Dict, Iterable
+from typing import Dict, Iterable, TYPE_CHECKING
 
 from app.core.config import get_settings
+from app.services.app_settings import (
+    get_effective_rate_provider,
+    get_rates_cache_ttl,
+)
+
+if TYPE_CHECKING:  # pragma: no cover
+    from app.db.dal import Database
 from app.services.money import round2
 from .providers import make_rate_provider, RateServiceFacade
 
@@ -55,12 +62,19 @@ class CentralRateCacheService:
     Public API mirrors RateServiceFacade to avoid broad refactors elsewhere.
     """
 
-    def __init__(self):
+    def __init__(self, db: "Database" | None = None):  # db optional for DI override
         self._settings = get_settings()
-        provider = make_rate_provider(self._settings.exchange_rate_provider)
+        # If DB provided, allow dynamic override of provider & TTL via metadata
+        if db is not None:
+            provider_name = get_effective_rate_provider(db)
+            ttl_seconds = get_rates_cache_ttl(db)
+        else:
+            provider_name = self._settings.exchange_rate_provider
+            ttl_seconds = self._settings.rates_cache_ttl_seconds
+        provider = make_rate_provider(provider_name)
         # Reuse existing facade for compute logic (rounding rules).
         self._underlying = RateServiceFacade(provider)
-        self._ttl = timedelta(seconds=self._settings.rates_cache_ttl_seconds)
+        self._ttl = timedelta(seconds=ttl_seconds)
         self._cache: Dict[str, _CacheEntry] = {}
         # Manual overrides (T07.04). Keyed by currency upper.
         self._overrides: Dict[str, _OverrideEntry] = {}
@@ -130,5 +144,16 @@ class CentralRateCacheService:
 
 # Singleton dependency helper used by FastAPI DI
 @lru_cache
-def get_central_rate_cache_service() -> CentralRateCacheService:
+def get_central_rate_cache_service() -> CentralRateCacheService:  # legacy no-DB path
     return CentralRateCacheService()
+
+
+def build_dynamic_rate_cache_service(db: "Database") -> CentralRateCacheService:
+    """Factory that bypasses lru_cache so dynamic metadata changes apply immediately.
+
+    Use this in contexts (settings update, admin panel) where immediate reflection
+    of provider/TTL changes is desired without process restart. Regular routes can
+    continue using the cached singleton for performance; they will reflect changes
+    after application restart or if code is adjusted later to refresh.
+    """
+    return CentralRateCacheService(db)
