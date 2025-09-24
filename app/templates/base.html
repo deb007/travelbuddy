@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{% block title %}Travel Expense Tracker{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <script>
+        // Tailwind CDN runtime config (only light extension for animations)
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ["system-ui", "Segoe UI", "Inter", "sans-serif"],
+                    }
+                }
+            }
+        }
+    </script>
+    {% block head_extra %}{% endblock %}
+</head>
+
+<body
+    class="min-h-screen flex flex-col bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-slate-200 antialiased selection:bg-blue-600/40 selection:text-white">
+    {% include 'partials/_nav.html' %}
+    <main class="w-full max-w-6xl mx-auto px-5 mt-8 mb-20 grow">
+        {% block content %}
+        <h1>Placeholder</h1>
+        <p>This base layout is ready. Extend it by creating templates that use
+            <code>{% raw %}{% extends 'base.html' %}{% endraw %}</code>.
+        </p>
+        {% endblock %}
+    </main>
+    <footer class="text-center py-10 text-[11px] text-slate-500">
+        <span class="tracking-wide">MVP &middot; v{{ version }}</span>
+    </footer>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

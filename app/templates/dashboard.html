@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+{% import 'partials/_components.html' as c %}
+
+{% block title %}Dashboard · Travel Expense Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-xl font-semibold mb-1">Dashboard</h1>
+<p class="text-slate-400 text-sm mb-6">Snapshot of trip finances.</p>
+
+<section class="grid gap-5 md:grid-cols-3 mb-6 auto-rows-fr">
+    <div
+        class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60 hover:border-slate-600/60 transition-colors">
+        <h2 class="text-[0.8rem] font-semibold uppercase tracking-wide text-slate-300 mb-2">Average Daily Spend</h2>
+        <div class="text-2xl font-semibold">₹ {{ avg.average_daily_spend }}</div>
+        <div class="text-[11px] text-slate-400 mt-1">Total: ₹ {{ avg.total_inr }} over {{ avg.days_elapsed }} day(s)
+        </div>
+    </div>
+    <div
+        class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60 hover:border-slate-600/60 transition-colors">
+        <h2 class="text-[0.8rem] font-semibold uppercase tracking-wide text-slate-300 mb-2">Remaining Daily Budget</h2>
+        <div class="text-2xl font-semibold">₹ {{ remaining.remaining_daily_budget }}</div>
+        <div class="text-[11px] text-slate-400 mt-1">Remaining: ₹ {{ remaining.remaining_inr }} across {{
+            remaining.days_left }} day(s)</div>
+    </div>
+    <div
+        class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60 hover:border-slate-600/60 transition-colors">
+        <h2 class="text-[0.8rem] font-semibold uppercase tracking-wide text-slate-300 mb-2">Exchange Rates</h2>
+        <ul class="list-none p-0 m-0 text-xs space-y-0.5">
+            {% for r in rates %}<li>1 {{ r.currency }} = ₹ {{ r.rate }}</li>{% endfor %}
+        </ul>
+        <div class="text-[10px] text-slate-500 mt-2">Cached (may refresh hourly)</div>
+    </div>
+</section>
+
+<section class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60 mb-6">
+    <h2 class="text-[0.8rem] font-semibold uppercase tracking-wide text-slate-300 mb-3">Budgets</h2>
+    {% if budgets %}
+    <div>
+        {% for b in budgets %}
+        {{ c.progress_bar(b.percent_used, b.currency ~ ' • ₹' ~ b.spent_amount ~ ' / ' ~ b.max_amount, warn=b.eighty and
+        not b.ninety, danger=b.ninety) }}
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-xs text-slate-500">No budgets configured yet.</p>
+    {% endif %}
+</section>
+
+<section class="grid gap-5 md:grid-cols-2">
+    <div class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60">
+        <h3 class="text-[0.8rem] font-semibold uppercase tracking-wide text-slate-300 mb-2">Currency Breakdown</h3>
+        {% if currency_breakdown %}
+        <div class="overflow-x-auto -mx-2 mt-2 mb-1">
+            <table class="w-full text-xs min-w-[340px] mx-2 border-separate border-spacing-y-1">
+                <thead>
+                    <tr class="text-[10px] uppercase tracking-wide text-slate-400">
+                        <th class="text-left font-medium">Currency</th>
+                        <th class="text-right font-medium">INR Total</th>
+                        <th class="text-right font-medium">% INR</th>
+                    </tr>
+                </thead>
+                <tbody class="text-[11px]">
+                    {% for item in currency_breakdown %}
+                    <tr class="odd:bg-slate-800/40 hover:bg-slate-700/40 transition-colors">
+                        <td class="py-1 pr-2">{{ item.currency }}</td>
+                        <td class="text-right py-1 pr-2">₹ {{ item.inr_total }}</td>
+                        <td class="text-right py-1 pr-2">{{ item.percent_inr }}%</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-[11px] text-slate-500">No spend yet.</p>
+        {% endif %}
+    </div>
+    <div class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60">
+        <h3 class="text-[0.8rem] font-semibold uppercase tracking-wide text-slate-300 mb-2">Category Breakdown</h3>
+        {% if category_breakdown %}
+        <div class="overflow-x-auto -mx-2 mt-2 mb-1">
+            <table class="w-full text-xs min-w-[340px] mx-2 border-separate border-spacing-y-1">
+                <thead>
+                    <tr class="text-[10px] uppercase tracking-wide text-slate-400">
+                        <th class="text-left font-medium">Category</th>
+                        <th class="text-right font-medium">INR</th>
+                        <th class="text-right font-medium">%</th>
+                    </tr>
+                </thead>
+                <tbody class="text-[11px]">
+                    {% for item in category_breakdown %}
+                    <tr class="odd:bg-slate-800/40 hover:bg-slate-700/40 transition-colors">
+                        <td class="py-1 pr-2">{{ item.category }}</td>
+                        <td class="text-right py-1 pr-2">₹ {{ item.inr_total }}</td>
+                        <td class="text-right py-1 pr-2">{{ item.percent }}%</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-[11px] text-slate-500">No spend yet.</p>
+        {% endif %}
+    </div>
+</section>
+
+{% endblock %}

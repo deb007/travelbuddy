@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% block title %}Add Expense · TravelBuddy{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl bg-slate-800/70 rounded-lg border border-slate-700/60 p-6 shadow-sm">
+    <h1 class="text-xl font-semibold mb-1">Add Expense</h1>
+    <p class="-mt-1 text-slate-400 text-sm mb-5">Log a new expense. Fields marked * are required.</p>
+
+    {% include 'partials/_form_errors.html' with context %}
+    {% if success %}
+    <div class="mb-5 rounded-md border border-emerald-600/50 bg-emerald-900/40 px-4 py-3 text-sm">
+        <strong class="text-emerald-300">Expense created!</strong>
+        <span class="block text-emerald-200 mt-1">ID: {{ created_expense.id }} – {{ created_expense.amount }} {{
+            created_expense.currency }} ({{ created_expense.category }})</span>
+    </div>
+    {% endif %}
+
+    <form method="post" action="" class="grid gap-5">
+        <div>
+            <label class="block text-xs font-semibold tracking-wide text-slate-400 uppercase mb-1" for="amount">Amount
+                *</label>
+            <input
+                class="w-full bg-slate-900/60 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 focus:border-blue-500"
+                id="amount" name="amount" type="number" step="0.01" min="0.01" required
+                value="{{ form.amount or '' }}" />
+        </div>
+        <div>
+            <label class="block text-xs font-semibold tracking-wide text-slate-400 uppercase mb-1"
+                for="currency">Currency
+                *</label>
+            <select
+                class="w-full bg-slate-900/60 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 focus:border-blue-500"
+                id="currency" name="currency" required>
+                <option value="">-- choose --</option>
+                {% for c in currencies %}
+                <option value="{{ c }}" {% if form.currency==c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs font-semibold tracking-wide text-slate-400 uppercase mb-1"
+                for="category">Category
+                *</label>
+            <select
+                class="w-full bg-slate-900/60 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 focus:border-blue-500"
+                id="category" name="category" required>
+                <option value="">-- choose --</option>
+                {% for cat in categories %}
+                <option value="{{ cat }}" {% if form.category==cat %}selected{% endif %}>{{ cat }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs font-semibold tracking-wide text-slate-400 uppercase mb-1"
+                for="payment_method">Payment Method *</label>
+            <select
+                class="w-full bg-slate-900/60 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 focus:border-blue-500"
+                id="payment_method" name="payment_method" required>
+                <option value="">-- choose --</option>
+                {% for pm in payment_methods %}
+                <option value="{{ pm }}" {% if form.payment_method==pm %}selected{% endif %}>{{ pm }}</option>
+                {% endfor %}
+            </select>
+            <p class="text-[10px] text-slate-500 mt-1">'forex' only valid with SGD / MYR.</p>
+        </div>
+        <div>
+            <label class="block text-xs font-semibold tracking-wide text-slate-400 uppercase mb-1" for="date">Date
+                *</label>
+            <input
+                class="w-full bg-slate-900/60 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 focus:border-blue-500"
+                id="date" name="date" type="date" required value="{{ form.date or '' }}" />
+        </div>
+        <div>
+            <label class="block text-xs font-semibold tracking-wide text-slate-400 uppercase mb-1"
+                for="description">Description</label>
+            <input
+                class="w-full bg-slate-900/60 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 focus:border-blue-500"
+                id="description" name="description" type="text" maxlength="120" value="{{ form.description or '' }}" />
+        </div>
+        <div class="flex items-center gap-4 pt-1">
+            <button
+                class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600/40 disabled:cursor-not-allowed text-white font-medium text-sm px-5 py-2 rounded-md shadow-sm transition-colors"
+                type="submit">Create Expense</button>
+            <a href="/ui" class="text-slate-400 text-xs hover:text-white">← Back to Dashboard</a>
+        </div>
+    </form>
+
+</div>
+
+{% endblock %}

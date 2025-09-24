@@ -1,0 +1,11 @@
+{% if errors %}
+<div class="form-errors"
+    style="background:#3a1d1d;border:1px solid #aa5555;padding:0.75rem 1rem;border-radius:6px;margin-bottom:1rem;">
+    <strong style="color:#ffb3b3;">Please fix the following:</strong>
+    <ul style="margin:0.5rem 0 0 1.2rem;padding:0;list-style:disc;">
+        {% for e in errors %}
+        <li style="margin:0.25rem 0;">{{ e }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}

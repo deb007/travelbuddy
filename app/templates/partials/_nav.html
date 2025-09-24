@@ -1,0 +1,28 @@
+<header
+    class="sticky top-0 z-40 backdrop-blur bg-slate-900/70 border-b border-slate-700/70 px-5 py-3 flex items-center gap-8 shadow-sm">
+    <div class="font-semibold tracking-wide text-sm text-slate-100">Travel Expense Tracker</div>
+    <nav class="flex gap-5 text-sm text-slate-300">
+        {% set path = request.url.path %}
+        {% macro nav_link(url, label) -%}
+        <a href="{{ url }}"
+            class="relative px-1 py-0.5 transition-colors {{ 'text-white' if path == url else 'hover:text-white' }}">
+            <span>{{ label }}</span>
+            {% if path == url %}<span class="absolute -bottom-1 left-0 right-0 h-0.5 rounded bg-blue-500"></span>{%
+            endif %}
+        </a>
+        {%- endmacro %}
+        {{ nav_link('/ui', 'Home') }}
+        {{ nav_link('/ui/expenses', 'Expenses') }}
+        {{ nav_link('/ui/analytics', 'Analytics') }}
+        {{ nav_link('/ui/budgets', 'Budgets') }}
+        {{ nav_link('/ui/forex', 'Forex') }}
+    </nav>
+    <div class="flex-1"></div>
+    {% if current_phase %}
+    <div class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white shadow {{ 'bg-amber-600' if current_phase == 'pre-trip' else 'bg-blue-600' }}"
+        title="Current phase derived from trip dates">
+        <span class="w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse"></span>
+        {{ current_phase | replace('-', ' ') }}
+    </div>
+    {% endif %}
+</header>

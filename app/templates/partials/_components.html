@@ -1,0 +1,15 @@
+{% macro progress_bar(percent, label='', warn=False, danger=False) %}
+{%- set capped = percent if percent <= 100 else 100 -%} <div class="mb-3" aria-label="{{ label }} progress"
+    role="group">
+    <div class="flex justify-between text-[11px] mb-1">
+        <span>{{ label }}</span>
+        <span aria-live="polite">{{ '%.2f' % percent }}%</span>
+    </div>
+    {%- set base = 'from-blue-500 to-blue-600' -%}
+    {%- if warn %}{% set base = 'from-amber-500 to-amber-600' %}{% endif -%}
+    {%- if danger %}{% set base = 'from-red-500 to-red-600' %}{% endif -%}
+    <div class="h-2 w-full rounded bg-slate-700/70 overflow-hidden">
+        <div class="h-full bg-gradient-to-r {{ base }} transition-all duration-500" style="width: {{ capped }}%"></div>
+    </div>
+    </div>
+    {% endmacro %}
