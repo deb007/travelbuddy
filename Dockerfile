@@ -33,7 +33,6 @@ RUN python -m venv /venv \
 COPY app ./app
 COPY docs ./docs
 COPY scripts ./scripts
-COPY assets ./assets
 COPY SETTINGS.md ./
 
 # Create data dir (bind mounted in compose for persistence)
