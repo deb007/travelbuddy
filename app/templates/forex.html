@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block title %}Forex · Travel Expense Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-xl font-semibold mb-1">Forex Cards</h1>
+<p class="text-slate-400 text-sm mb-6">Loaded vs spent amounts and low balance indicators.</p>
+
+<section class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60 mb-8">
+    <h2 class="text-[0.75rem] font-semibold uppercase tracking-wide text-slate-300 mb-3">Summary</h2>
+    {% if cards %}
+    <div class="flex flex-wrap gap-4 text-[11px] text-slate-300">
+        <div><span class="font-semibold">Total Cards:</span> {{ cards|length }}</div>
+        <div class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500"></span> Low Balance (
+            <20%): {{ low_cards|length }}</div>
+        </div>
+        {% else %}
+        <p class="text-[11px] text-slate-500">No forex cards configured yet. Use the API to create/update loads.</p>
+        {% endif %}
+</section>
+
+<section>
+    <h2 class="text-[0.75rem] font-semibold uppercase tracking-wide text-slate-300 mb-3">Details</h2>
+    {% if cards %}
+    <div class="overflow-x-auto -mx-2">
+        <table class="w-full text-xs min-w-[540px] mx-2 border-separate border-spacing-y-1">
+            <thead>
+                <tr class="text-[10px] uppercase tracking-wide text-slate-400">
+                    <th class="text-left font-medium">Currency</th>
+                    <th class="text-right font-medium">Loaded</th>
+                    <th class="text-right font-medium">Spent</th>
+                    <th class="text-right font-medium">Remaining</th>
+                    <th class="text-right font-medium">% Rem</th>
+                    <th class="text-left font-medium">Status</th>
+                </tr>
+            </thead>
+            <tbody class="text-[11px]">
+                {% for c in cards %}
+                <tr
+                    class="odd:bg-slate-800/40 hover:bg-slate-700/40 transition-colors {{ 'outline outline-1 outline-red-600/40' if c.low_balance else '' }}">
+                    <td class="py-1 pr-2 font-medium text-slate-200">{{ c.currency }}</td>
+                    <td class="text-right py-1 pr-2">{{ '%.2f' % c.loaded_amount }}</td>
+                    <td class="text-right py-1 pr-2">{{ '%.2f' % c.spent_amount }}</td>
+                    <td class="text-right py-1 pr-2">{{ '%.2f' % c.remaining }}</td>
+                    <td class="text-right py-1 pr-2">{{ '%.2f' % c.percent_remaining }}%</td>
+                    <td class="py-1 pr-2">
+                        {% if c.low_balance %}
+                        <span
+                            class="inline-flex items-center gap-1 rounded-full bg-red-600 text-white px-2 py-0.5 text-[10px] font-semibold">
+                            <span class="w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse"></span> Low
+                        </span>
+                        {% else %}
+                        <span
+                            class="inline-flex items-center gap-1 rounded-full bg-green-600/70 text-white px-2 py-0.5 text-[10px] font-semibold">
+                            <span class="w-1.5 h-1.5 rounded-full bg-white/40"></span> OK
+                        </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-[11px] text-slate-500">No data to display.</p>
+    {% endif %}
+</section>
+
+<section class="mt-10 bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60">
+    <h2 class="text-[0.75rem] font-semibold uppercase tracking-wide text-slate-300 mb-3">Legend</h2>
+    <ul class="list-disc ml-5 text-[11px] text-slate-400 space-y-1">
+        <li><span class="font-medium text-green-300">OK</span>: Remaining balance is >=20% of loaded amount.</li>
+        <li><span class="font-medium text-red-300">Low</span>: Remaining balance &lt;20% of loaded amount (strictly less
+            than).</li>
+    </ul>
+</section>
+
+{% endblock %}

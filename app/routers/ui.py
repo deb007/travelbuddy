@@ -11,6 +11,7 @@ from app.db.dal import Database
 from app.services.timeline import get_trip_dates, resolve_phase
 from app.services.budget_utils import list_budget_statuses
 from app.services.forex_utils import list_status as list_forex_status
+from app.services.alerts import collect_alerts
 from app.services.analytics_utils import (
     compute_average_daily_spend,
     compute_remaining_daily_budget,
@@ -64,42 +65,8 @@ async def ui_home(request: Request, db: Database = Depends(get_db)):
         except Exception:
             rates.append({"currency": cur, "rate": "-"})
 
-    # Alerts aggregation (T09.06)
-    # Budget alerts: warn at >=80% (<90), danger at >=90
-    budget_alerts = []
-    for b in budgets:
-        if b["ninety"]:
-            budget_alerts.append(
-                {
-                    "type": "budget",
-                    "currency": b["currency"],
-                    "level": "danger",
-                    "message": f"{b['currency']} budget at {b['percent_used']}% (>=90%)",
-                }
-            )
-        elif b["eighty"]:
-            budget_alerts.append(
-                {
-                    "type": "budget",
-                    "currency": b["currency"],
-                    "level": "warn",
-                    "message": f"{b['currency']} budget at {b['percent_used']}% (>=80%)",
-                }
-            )
-    # Forex card alerts: low balance flag
-    forex_rows = db.list_forex_cards()
-    forex_cards = list_forex_status(forex_rows)
-    forex_alerts = [
-        {
-            "type": "forex",
-            "currency": c["currency"],
-            "level": "warn",  # single severity for MVP
-            "message": f"{c['currency']} forex remaining {c['percent_remaining']}% (<20%)",
-        }
-        for c in forex_cards
-        if c["low_balance"]
-    ]
-    alerts = budget_alerts + forex_alerts
+    # Alerts aggregation via centralized service (T10.03)
+    alerts = collect_alerts(db)
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -113,6 +80,86 @@ async def ui_home(request: Request, db: Database = Depends(get_db)):
             "currency_breakdown": currency_breakdown,
             "category_breakdown": category_breakdown,
             "rates": rates,
+            "alerts": alerts,
+            "alerts_count": len(alerts),
+        },
+    )
+
+
+@router.get("/ui/budgets", response_class=HTMLResponse)
+async def ui_budgets(request: Request, db: Database = Depends(get_db)):
+    """Standalone budgets page (T10.01) highlighting threshold logic.
+
+    Reuses existing budget status utility that already exposes 80% / 90% flags.
+    Provides an at-a-glance view plus simple legend without duplicating logic
+    implemented in dashboard.
+    """
+    phase = compute_phase(db)
+    settings = get_settings()
+    budgets = list_budget_statuses(db)
+
+    # Derive counts for thresholds (purely presentational)
+    total = len(budgets)
+    warn_list = [b for b in budgets if b["eighty"] and not b["ninety"]]
+    danger_list = [b for b in budgets if b["ninety"]]
+
+    return templates.TemplateResponse(
+        "budgets.html",
+        {
+            "request": request,
+            "current_phase": phase,
+            "version": settings.version,
+            "budgets": budgets,
+            "total_budgets": total,
+            "warn_budgets": warn_list,
+            "danger_budgets": danger_list,
+            # alerts_count reused in nav (only include active ones)
+            "alerts_count": len(warn_list) + len(danger_list),
+        },
+    )
+
+
+@router.get("/ui/forex", response_class=HTMLResponse)
+async def ui_forex(request: Request, db: Database = Depends(get_db)):
+    """Forex cards overview (T10.02 low balance logic UI).
+
+    Displays each forex card with remaining balance and highlights low balance
+    (<20% remaining) without reimplementing business logic.
+    """
+    phase = compute_phase(db)
+    settings = get_settings()
+    rows = db.list_forex_cards()
+    cards = list_forex_status(rows)
+    low_cards = [c for c in cards if c["low_balance"]]
+    return templates.TemplateResponse(
+        "forex.html",
+        {
+            "request": request,
+            "current_phase": phase,
+            "version": settings.version,
+            "cards": cards,
+            "low_cards": low_cards,
+            "alerts_count": len(low_cards),  # for nav badge consistency
+        },
+    )
+
+
+@router.get("/ui/alerts", response_class=HTMLResponse)
+async def ui_alerts(request: Request, db: Database = Depends(get_db)):
+    """Alerts overview (T10.03) - consolidates current active alerts.
+
+    Reuses `_alerts.html` partial for list rendering to ensure consistency with
+    the dashboard. Provides a simple dedicated page for quick scanning.
+    """
+    phase = compute_phase(db)
+    settings = get_settings()
+    alerts = collect_alerts(db)
+    return templates.TemplateResponse(
+        "alerts.html",
+        {
+            "request": request,
+            "current_phase": phase,
+            "version": settings.version,
             "alerts": alerts,
             "alerts_count": len(alerts),
         },

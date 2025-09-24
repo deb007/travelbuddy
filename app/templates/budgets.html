@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% import 'partials/_components.html' as c %}
+
+{% block title %}Budgets · Travel Expense Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-xl font-semibold mb-1">Budgets</h1>
+<p class="text-slate-400 text-sm mb-6">Configured currency budgets with threshold indicators.</p>
+
+<section class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60 mb-8">
+    <h2 class="text-[0.75rem] font-semibold uppercase tracking-wide text-slate-300 mb-3">Summary</h2>
+    {% if total_budgets > 0 %}
+    <div class="flex flex-wrap gap-4 text-[11px] text-slate-300">
+        <div><span class="font-semibold">Total:</span> {{ total_budgets }}</div>
+        <div class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span> >=80%: {{
+            warn_budgets|length }}</div>
+        <div class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500"></span> >=90%: {{
+            danger_budgets|length }}</div>
+    </div>
+    {% else %}
+    <p class="text-[11px] text-slate-500">No budgets set yet. Use the API to configure.</p>
+    {% endif %}
+</section>
+
+<section class="mb-10">
+    <h2 class="text-[0.75rem] font-semibold uppercase tracking-wide text-slate-300 mb-3">Details</h2>
+    {% if budgets %}
+    {% for b in budgets %}
+    {{ c.progress_bar(b.percent_used, b.currency ~ ' • ₹' ~ b.spent_amount ~ ' / ' ~ b.max_amount, warn=b.eighty and not
+    b.ninety, danger=b.ninety) }}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-slate-400 mb-5 pl-1">
+        <div><span class="text-slate-300">Remaining:</span> ₹ {{ b.remaining }}</div>
+        <div><span class="text-slate-300">Used:</span> {{ '%.2f' % b.percent_used }}%</div>
+        <div><span class="text-slate-300">80% Flag:</span> {{ 'Yes' if b.eighty else 'No' }}</div>
+        <div><span class="text-slate-300">90% Flag:</span> {{ 'Yes' if b.ninety else 'No' }}</div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="text-[11px] text-slate-500">No budgets to show.</p>
+    {% endif %}
+</section>
+
+<section class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60">
+    <h2 class="text-[0.75rem] font-semibold uppercase tracking-wide text-slate-300 mb-3">Legend</h2>
+    <ul class="list-disc ml-5 text-[11px] text-slate-400 space-y-1">
+        <li><span class="text-slate-300 font-medium">Blue bar</span>: Under 80% usage.</li>
+        <li><span class="text-amber-400 font-medium">Amber bar</span>: >=80% and <90% usage.</li>
+        <li><span class="text-red-400 font-medium">Red bar</span>: >=90% usage (critical).</li>
+    </ul>
+</section>
+
+{% endblock %}

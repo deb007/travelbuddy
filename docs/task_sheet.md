@@ -112,9 +112,9 @@ Phase Mapping: Phase 1 (Core + Budget + Logging), Phase 2 (Analytics + Exchange 
 ### E10 Alerts & Threshold Logic
 | ID | Task | Sub Task | Priority | Description | Dependencies | Status | What Was Done | What Should Be Tested |
 |----|------|----------|----------|-------------|--------------|--------|---------------|-----------------------|
-| T10.01 | Alerts | Budget threshold logic | P0 | 80%, 90% flags from budget util. | T03.04 | Not Started |  | Trigger at correct boundaries. |
-| T10.02 | Alerts | Forex low balance logic | P1 | <20% remaining flag. | T06.04 | Not Started |  | Edge at exactly 20%. |
-| T10.03 | Alerts | Aggregation surface | P1 | Provide list of active alerts to UI. | T10.01 | Not Started |  | Multiple alerts display. |
+| T10.01 | Alerts | Budget threshold logic | P0 | 80%, 90% flags from budget util. | T03.04 | Done | Implemented via existing `services/budget_utils.py` (`budget_status` exposes `eighty`/`ninety` flags) already consumed on dashboard; added dedicated `/ui/budgets` page (progress bars + legend) reusing macro `_components.html::progress_bar` with color transitions (blue/amber/red) to visualize <80%, >=80%<90%, >=90%. | Trigger at correct boundaries (79.9 no flag, 80 amber, 89.99 amber, 90 red). |
+| T10.02 | Alerts | Forex low balance logic | P1 | <20% remaining flag. | T06.04 | Done | Centralized in `services/forex_utils.py` (`LOW_BALANCE_THRESHOLD=0.20`, `card_status` sets `low_balance` when remaining/loaded < 20%). Added `/ui/forex` page listing cards with Low badge (red) vs OK (green) and summary counts; nav badge shows count via alerts_count. | Edge at exactly 20% shows OK (not low); just below triggers Low; multiple cards aggregate correctly. |
+| T10.03 | Alerts | Aggregation surface | P1 | Provide list of active alerts to UI. | T10.01 | Done | Added `services/alerts.py` with `collect_alerts()` consolidating budget threshold (>=80/90) and forex low balance (<20%) logic into unified list consumed by dashboard and new `/ui/alerts` page. Refactored `/ui` route to use service; created `alerts.html` reusing `_alerts.html` partial and added nav link. | Multiple alerts display with proper severity ordering; dashboard & alerts page show identical set. |
 
 ### E11 Offline Support (Basic)
 | ID | Task | Sub Task | Priority | Description | Dependencies | Status | What Was Done | What Should Be Tested |

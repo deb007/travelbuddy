@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}Alerts · Travel Expense Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-xl font-semibold mb-1">Alerts</h1>
+<p class="text-slate-400 text-sm mb-6">Active budget and forex notifications.</p>
+
+{% include 'partials/_alerts.html' %}
+
+{% if not alerts %}
+<p class="text-[11px] text-slate-500 mt-4">No active alerts. Great job staying on track!</p>
+{% endif %}
+
+<section class="mt-10 bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60">
+    <h2 class="text-[0.75rem] font-semibold uppercase tracking-wide text-slate-300 mb-3">About Alerts</h2>
+    <ul class="list-disc ml-5 text-[11px] text-slate-400 space-y-1">
+        <li>Budget Warn: Usage &ge; 80% and &lt; 90%.</li>
+        <li>Budget Danger: Usage &ge; 90%.</li>
+        <li>Forex Low: Remaining balance &lt; 20% of loaded amount.</li>
+    </ul>
+</section>
+
+{% endblock %}
