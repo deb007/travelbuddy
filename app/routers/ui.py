@@ -1,9 +1,9 @@
 from datetime import date
-from fastapi import APIRouter, Depends, Request, Form
-from fastapi.responses import HTMLResponse
+from typing import List, Optional, Dict, Any
+
+from fastapi import APIRouter, Depends, Request, Form, HTTPException, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from fastapi import HTTPException
-from typing import List, Optional
 from pydantic import ValidationError
 
 from app.core.config import get_settings
@@ -67,6 +67,28 @@ def compute_phase(db: Database):
     return phase
 
 
+def _trip_nav_context(db: Database, trip_id: Optional[int] = None) -> Dict[str, Any]:
+    tid = trip_id if trip_id is not None else get_active_trip_id(db)
+    trip_rows = db.list_trips(include_archived=True)
+    trips: List[Dict[str, Any]] = []
+    for row in trip_rows:
+        trips.append(
+            {
+                "id": int(row["id"]),
+                "name": row.get("name", ""),
+                "status": row.get("status", "active"),
+                "start_date": row.get("start_date"),
+                "end_date": row.get("end_date"),
+            }
+        )
+    active = next((t for t in trips if t["id"] == tid), None)
+    return {
+        "active_trip": active,
+        "active_trip_id": tid,
+        "trip_options": trips,
+    }
+
+
 @router.get("/ui", response_class=HTMLResponse)
 async def ui_home(request: Request, db: Database = Depends(get_db)):
     clear_trip_context()
@@ -91,24 +113,23 @@ async def ui_home(request: Request, db: Database = Depends(get_db)):
             rates.append({"currency": cur, "rate": "-"})
 
     # Alerts aggregation via centralized service (T10.03)
-    alerts = collect_alerts(db)
+    alerts = collect_alerts(db, trip_id=trip_id)
 
-    return templates.TemplateResponse(
-        "dashboard.html",
-        {
-            "request": request,
-            "current_phase": phase,
-            "version": settings.version,
-            "budgets": budgets,
-            "avg": avg,
-            "remaining": remaining,
-            "currency_breakdown": currency_breakdown,
-            "category_breakdown": category_breakdown,
-            "rates": rates,
-            "alerts": alerts,
-            "alerts_count": len(alerts),
-        },
-    )
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "budgets": budgets,
+        "avg": avg,
+        "remaining": remaining,
+        "currency_breakdown": currency_breakdown,
+        "category_breakdown": category_breakdown,
+        "rates": rates,
+        "alerts": alerts,
+        "alerts_count": len(alerts),
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("dashboard.html", context)
 
 
 @router.get("/ui/budgets", response_class=HTMLResponse)
@@ -129,21 +150,20 @@ async def ui_budgets(request: Request, db: Database = Depends(get_db)):
     total = len(budgets)
     warn_list = [b for b in budgets if b["eighty"] and not b["ninety"]]
     danger_list = [b for b in budgets if b["ninety"]]
+    alerts = collect_alerts(db, trip_id=trip_id)
 
-    return templates.TemplateResponse(
-        "budgets.html",
-        {
-            "request": request,
-            "current_phase": phase,
-            "version": settings.version,
-            "budgets": budgets,
-            "total_budgets": total,
-            "warn_budgets": warn_list,
-            "danger_budgets": danger_list,
-            # alerts_count reused in nav (only include active ones)
-            "alerts_count": len(warn_list) + len(danger_list),
-        },
-    )
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "budgets": budgets,
+        "total_budgets": total,
+        "warn_budgets": warn_list,
+        "danger_budgets": danger_list,
+        "alerts_count": len(alerts),
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("budgets.html", context)
 
 
 @router.get("/ui/forex", response_class=HTMLResponse)
@@ -161,17 +181,17 @@ async def ui_forex(request: Request, db: Database = Depends(get_db)):
     thresholds = get_thresholds(db)
     cards = list_forex_status(rows, forex_low_pct=thresholds.forex_low)
     low_cards = [c for c in cards if c["low_balance"]]
-    return templates.TemplateResponse(
-        "forex.html",
-        {
-            "request": request,
-            "current_phase": phase,
-            "version": settings.version,
-            "cards": cards,
-            "low_cards": low_cards,
-            "alerts_count": len(low_cards),  # for nav badge consistency
-        },
-    )
+    alerts = collect_alerts(db, trip_id=trip_id)
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "cards": cards,
+        "low_cards": low_cards,
+        "alerts_count": len(alerts),
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("forex.html", context)
 
 
 @router.get("/ui/alerts", response_class=HTMLResponse)
@@ -186,38 +206,55 @@ async def ui_alerts(request: Request, db: Database = Depends(get_db)):
     settings = get_settings()
     trip_id = get_active_trip_id(db)
     alerts = collect_alerts(db, trip_id=trip_id)
-    return templates.TemplateResponse(
-        "alerts.html",
-        {
-            "request": request,
-            "current_phase": phase,
-            "version": settings.version,
-            "alerts": alerts,
-            "alerts_count": len(alerts),
-        },
-    )
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "alerts": alerts,
+        "alerts_count": len(alerts),
+        }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("alerts.html", context)
+
+
+@router.post("/ui/trips/select", response_class=RedirectResponse)
+async def ui_trip_select(
+    trip_id: int = Form(...),
+    next_url: Optional[str] = Form(None),
+    db: Database = Depends(get_db),
+):
+    try:
+        db.set_active_trip(trip_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    clear_trip_context()
+    target = next_url or "/ui"
+    if not target.startswith("/"):
+        target = "/ui"
+    return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/ui/expenses/new", response_class=HTMLResponse)
 async def ui_expense_form(request: Request, db: Database = Depends(get_db)):
+    clear_trip_context()
     phase = compute_phase(db)
     settings = get_settings()
+    trip_id = get_active_trip_id(db)
     # Initial blank form data
     form = {}
-    return templates.TemplateResponse(
-        "expense_form.html",
-        {
-            "request": request,
-            "current_phase": phase,
-            "version": settings.version,
-            "currencies": sorted(CURRENCIES),
-            "categories": sorted(CATEGORIES),
-            "payment_methods": sorted(PAYMENT_METHODS),
-            "errors": [],
-            "form": form,
-            "success": False,
-        },
-    )
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "currencies": sorted(CURRENCIES),
+        "categories": sorted(CATEGORIES),
+        "payment_methods": sorted(PAYMENT_METHODS),
+        "errors": [],
+        "form": form,
+        "success": False,
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("expense_form.html", context)
 
 
 @router.post("/ui/expenses/new", response_class=HTMLResponse)
@@ -316,21 +353,20 @@ async def ui_expense_form_submit(
         # Clear form state after success except maybe date for faster entry
         form_state = {"date": date}
 
-    return templates.TemplateResponse(
-        "expense_form.html",
-        {
-            "request": request,
-            "current_phase": phase,
-            "version": settings.version,
-            "currencies": sorted(CURRENCIES),
-            "categories": sorted(CATEGORIES),
-            "payment_methods": sorted(PAYMENT_METHODS),
-            "errors": errors,
-            "form": form_state,
-            "success": success,
-            "created_expense": created_expense,
-        },
-    )
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "currencies": sorted(CURRENCIES),
+        "categories": sorted(CATEGORIES),
+        "payment_methods": sorted(PAYMENT_METHODS),
+        "errors": errors,
+        "form": form_state,
+        "success": success,
+        "created_expense": created_expense,
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("expense_form.html", context)
 
 
 @router.get("/ui/expenses", response_class=HTMLResponse)
@@ -342,15 +378,14 @@ async def ui_expenses_list(request: Request, db: Database = Depends(get_db)):
     rows = db.list_expenses(trip_id=trip_id)
     grouped = group_expenses_by_date(rows)
 
-    return templates.TemplateResponse(
-        "expenses_list.html",
-        {
-            "request": request,
-            "current_phase": phase,
-            "version": settings.version,
-            "expenses": grouped,
-        },
-    )
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "expenses": grouped,
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("expenses_list.html", context)
 
 
 def _build_expense_form_context(
@@ -454,24 +489,23 @@ async def ui_settings(request: Request, db: Database = Depends(get_db)):
             "currencies": get_widget_flag(db, "currencies", True),
         },
     }
-    return templates.TemplateResponse(
-        "settings.html",
-        {
-            "request": request,
-            "current_phase": phase,
-            "version": settings.version,
-            "alerts_count": len(alerts),
-            "trip_dates": trip_dates,
-            "thresholds": th,
-            "forex_rows": forex_rows,
-            "messages": {},  # section -> list[str]
-            "errors": {},
-            "rate_provider": rate_provider,
-            "rate_ttl": rate_ttl,
-            "budget_flags": budget_flags,
-            "ui_prefs": ui_prefs,
-        },
-    )
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "alerts_count": len(alerts),
+        "trip_dates": trip_dates,
+        "thresholds": th,
+        "forex_rows": forex_rows,
+        "messages": {},
+        "errors": {},
+        "rate_provider": rate_provider,
+        "rate_ttl": rate_ttl,
+        "budget_flags": budget_flags,
+        "ui_prefs": ui_prefs,
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("settings.html", context)
 
 
 @router.post("/ui/settings", response_class=HTMLResponse)
@@ -647,25 +681,24 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
     }
     alerts = collect_alerts(db, trip_id=trip_id)
 
-    return templates.TemplateResponse(
-        "settings.html",
-        {
-            "request": request,
-            "current_phase": phase,
-            "version": settings.version,
-            "alerts_count": len(alerts),
-            "trip_dates": trip_dates,
-            "thresholds": th,
-            "forex_rows": forex_rows,
-            "messages": messages,
-            "errors": errors,
-            "active_section": section,
-            "rate_provider": rate_provider,
-            "rate_ttl": rate_ttl,
-            "budget_flags": budget_flags,
-            "ui_prefs": ui_prefs,
-        },
-    )
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "alerts_count": len(alerts),
+        "trip_dates": trip_dates,
+        "thresholds": th,
+        "forex_rows": forex_rows,
+        "messages": messages,
+        "errors": errors,
+        "active_section": section,
+        "rate_provider": rate_provider,
+        "rate_ttl": rate_ttl,
+        "budget_flags": budget_flags,
+        "ui_prefs": ui_prefs,
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("settings.html", context)
 
 
 @router.get("/ui/expenses/{expense_id}/edit", response_class=HTMLResponse)
@@ -695,6 +728,7 @@ async def ui_expense_edit_form(
         form_state=form_state,
         expense_id=expense_id,
     )
+    ctx.update(_trip_nav_context(db, trip_id=trip_id))
     return templates.TemplateResponse("expense_form.html", ctx)
 
 
@@ -805,6 +839,7 @@ async def ui_expense_edit_submit(
         expense_id=expense_id,
         updated=updated,
     )
+    ctx.update(_trip_nav_context(db, trip_id=trip_id))
     return templates.TemplateResponse("expense_form.html", ctx)
 
 
@@ -826,13 +861,12 @@ async def ui_expense_delete(
     rows = db.list_expenses(trip_id=trip_id)
     grouped = group_expenses_by_date(rows)
 
-    return templates.TemplateResponse(
-        "expenses_list.html",
-        {
-            "request": request,
-            "current_phase": phase,
-            "version": settings.version,
-            "expenses": grouped,
-            "deleted_id": expense_id,
-        },
-    )
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "expenses": grouped,
+        "deleted_id": expense_id,
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("expenses_list.html", context)
