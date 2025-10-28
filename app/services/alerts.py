@@ -15,7 +15,7 @@ modules to avoid duplication. This module only orchestrates and formats.
 """
 
 from __future__ import annotations
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from app.db.dal import Database
 from app.services.budget_utils import list_budget_statuses
@@ -23,13 +23,13 @@ from app.services.forex_utils import list_status as list_forex_status
 from app.services.settings import get_thresholds
 
 
-def collect_alerts(db: Database) -> List[Dict[str, Any]]:
+def collect_alerts(db: Database, trip_id: Optional[int] = None) -> List[Dict[str, Any]]:
     alerts: List[Dict[str, Any]] = []
 
     th = get_thresholds(db)
 
     # Budget alerts (dynamic thresholds)
-    for b in list_budget_statuses(db):
+    for b in list_budget_statuses(db, trip_id=trip_id):
         if b["danger"]:
             alerts.append(
                 {
@@ -50,7 +50,7 @@ def collect_alerts(db: Database) -> List[Dict[str, Any]]:
             )
 
     # Forex alerts (dynamic threshold)
-    forex_rows = db.list_forex_cards()
+    forex_rows = db.list_forex_cards(trip_id=trip_id)
     for c in list_forex_status(forex_rows, forex_low_pct=th.forex_low):
         if c["low_balance"]:
             alerts.append(

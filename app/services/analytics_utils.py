@@ -30,15 +30,16 @@ class AverageDailySpendResult:
 
 
 def compute_average_daily_spend(
-    db: Database, as_of: date | None = None
+    db: Database, as_of: date | None = None, trip_id: int | None = None
 ) -> AverageDailySpendResult:
     as_of = as_of or date.today()
-    earliest = db.earliest_expense_date()
+    tid = trip_id if trip_id is not None else db.get_active_trip_id()
+    earliest = db.earliest_expense_date(trip_id=tid)
     if earliest is None or earliest > as_of:
         return AverageDailySpendResult(
             total_inr=0.0, days_elapsed=0, average_daily_spend=0.0
         )
-    total = db.total_inr_spent()
+    total = db.total_inr_spent(trip_id=tid)
     days_elapsed = (as_of - earliest).days + 1  # inclusive span
     if days_elapsed <= 0:
         days_elapsed = 1
@@ -57,7 +58,7 @@ class RemainingDailyBudgetResult:
 
 
 def compute_remaining_daily_budget(
-    db: Database, as_of: date | None = None
+    db: Database, as_of: date | None = None, trip_id: int | None = None
 ) -> RemainingDailyBudgetResult:
     """Compute remaining daily budget for the rest of the trip.
 
@@ -74,7 +75,8 @@ def compute_remaining_daily_budget(
         - Negative remaining (should not occur due to clamping) -> clamp to 0.
     """
     as_of = as_of or date.today()
-    trip = db.get_trip_dates()
+    tid = trip_id if trip_id is not None else db.get_active_trip_id()
+    trip = db.get_trip_dates(trip_id=tid)
     if not trip:
         return RemainingDailyBudgetResult(
             remaining_inr=0.0, days_left=0, remaining_daily_budget=0.0
@@ -89,7 +91,7 @@ def compute_remaining_daily_budget(
         return RemainingDailyBudgetResult(
             remaining_inr=0.0, days_left=0, remaining_daily_budget=0.0
         )
-    inr_status = get_budget_status(db, "INR")
+    inr_status = get_budget_status(db, "INR", trip_id=tid)
     remaining_inr = float(inr_status["remaining"]) if inr_status else 0.0
     if remaining_inr <= 0:
         return RemainingDailyBudgetResult(
@@ -113,7 +115,10 @@ class CurrencyBreakdownItem:
 
 
 def compute_currency_breakdown(
-    db: Database, start_date: date | None = None, end_date: date | None = None
+    db: Database,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    trip_id: int | None = None,
 ) -> list[CurrencyBreakdownItem]:
     """Return list of currency breakdown items ordered by currency.
 
@@ -124,7 +129,10 @@ def compute_currency_breakdown(
 
     We compute percent_inr relative to grand total INR (0 -> empty list or 0 totals).
     """
-    rows = db.sums_by_currency(start_date=start_date, end_date=end_date)
+    tid = trip_id if trip_id is not None else db.get_active_trip_id()
+    rows = db.sums_by_currency(
+        start_date=start_date, end_date=end_date, trip_id=tid
+    )
     grand = sum(r["inr_total"] for r in rows) or 0.0
     if grand <= 0:
         return [
@@ -156,7 +164,10 @@ class CategoryBreakdownItem:
 
 
 def compute_category_breakdown(
-    db: Database, start_date: date | None = None, end_date: date | None = None
+    db: Database,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    trip_id: int | None = None,
 ) -> list[CategoryBreakdownItem]:
     """Return list of category totals (already percent-enriched by DAL).
 
@@ -166,7 +177,10 @@ def compute_category_breakdown(
         - percent (rounded to 2 decimals, sums ~100%)
     We simply wrap into immutable dataclasses for consistency with other analytics.
     """
-    rows = db.sums_by_category(start_date=start_date, end_date=end_date)
+    tid = trip_id if trip_id is not None else db.get_active_trip_id()
+    rows = db.sums_by_category(
+        start_date=start_date, end_date=end_date, trip_id=tid
+    )
     return [
         CategoryBreakdownItem(
             category=r["category"],
@@ -186,7 +200,10 @@ class TrendPoint:
 
 
 def compute_trend_data(
-    db: Database, start_date: date | None = None, end_date: date | None = None
+    db: Database,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    trip_id: int | None = None,
 ) -> list[TrendPoint]:
     """Return chronological list of daily totals plus cumulative INR spend.
 
@@ -196,7 +213,8 @@ def compute_trend_data(
 
     If there are no expenses in the range returns empty list.
     """
-    rows = db.daily_totals(start_date=start_date, end_date=end_date)
+    tid = trip_id if trip_id is not None else db.get_active_trip_id()
+    rows = db.daily_totals(start_date=start_date, end_date=end_date, trip_id=tid)
     cumulative = 0.0
     points: list[TrendPoint] = []
     for r in rows:

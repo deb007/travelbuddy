@@ -46,6 +46,7 @@ from app.models.expense import ExpenseIn, ExpenseUpdateIn
 from app.services.expense_validation import validate_expense_domain
 from app.services.rates.conversion import compute_inr_equivalent
 from app.services.money import round2
+from app.services.trip_context import get_active_trip_id, clear_trip_context
 
 router = APIRouter(tags=["ui"])
 
@@ -68,15 +69,17 @@ def compute_phase(db: Database):
 
 @router.get("/ui", response_class=HTMLResponse)
 async def ui_home(request: Request, db: Database = Depends(get_db)):
+    clear_trip_context()
     phase = compute_phase(db)
     settings = get_settings()
+    trip_id = get_active_trip_id(db)
 
     # Metrics
-    budgets = list_budget_statuses(db)
-    avg = compute_average_daily_spend(db)
-    remaining = compute_remaining_daily_budget(db)
-    currency_breakdown = compute_currency_breakdown(db)
-    category_breakdown = compute_category_breakdown(db)
+    budgets = list_budget_statuses(db, trip_id=trip_id)
+    avg = compute_average_daily_spend(db, trip_id=trip_id)
+    remaining = compute_remaining_daily_budget(db, trip_id=trip_id)
+    currency_breakdown = compute_currency_breakdown(db, trip_id=trip_id)
+    category_breakdown = compute_category_breakdown(db, trip_id=trip_id)
 
     rate_service = get_central_rate_cache_service()
     rates = []
@@ -116,9 +119,11 @@ async def ui_budgets(request: Request, db: Database = Depends(get_db)):
     Provides an at-a-glance view plus simple legend without duplicating logic
     implemented in dashboard.
     """
+    clear_trip_context()
     phase = compute_phase(db)
     settings = get_settings()
-    budgets = list_budget_statuses(db)
+    trip_id = get_active_trip_id(db)
+    budgets = list_budget_statuses(db, trip_id=trip_id)
 
     # Derive counts for thresholds (purely presentational)
     total = len(budgets)
@@ -148,10 +153,13 @@ async def ui_forex(request: Request, db: Database = Depends(get_db)):
     Displays each forex card with remaining balance and highlights low balance
     (<20% remaining) without reimplementing business logic.
     """
+    clear_trip_context()
     phase = compute_phase(db)
     settings = get_settings()
-    rows = db.list_forex_cards()
-    cards = list_forex_status(rows)
+    trip_id = get_active_trip_id(db)
+    rows = db.list_forex_cards(trip_id=trip_id)
+    thresholds = get_thresholds(db)
+    cards = list_forex_status(rows, forex_low_pct=thresholds.forex_low)
     low_cards = [c for c in cards if c["low_balance"]]
     return templates.TemplateResponse(
         "forex.html",
@@ -173,9 +181,11 @@ async def ui_alerts(request: Request, db: Database = Depends(get_db)):
     Reuses `_alerts.html` partial for list rendering to ensure consistency with
     the dashboard. Provides a simple dedicated page for quick scanning.
     """
+    clear_trip_context()
     phase = compute_phase(db)
     settings = get_settings()
-    alerts = collect_alerts(db)
+    trip_id = get_active_trip_id(db)
+    alerts = collect_alerts(db, trip_id=trip_id)
     return templates.TemplateResponse(
         "alerts.html",
         {
@@ -221,8 +231,10 @@ async def ui_expense_form_submit(
     description: str | None = Form(None),
     db: Database = Depends(get_db),
 ):
+    clear_trip_context()
     phase = compute_phase(db)
     settings = get_settings()
+    trip_id = get_active_trip_id(db)
     errors: List[str] = []
     form_state = {
         "amount": amount,
@@ -283,8 +295,9 @@ async def ui_expense_form_submit(
                 expense=expense_in,
                 inr_equivalent=conv.inr_equivalent,
                 exchange_rate=conv.rate,
+                trip_id=trip_id,
             )
-            row = db.get_expense(expense_id)
+            row = db.get_expense(expense_id, trip_id=trip_id)
             if row:
                 created_expense = {
                     "id": row["id"],
@@ -322,9 +335,11 @@ async def ui_expense_form_submit(
 
 @router.get("/ui/expenses", response_class=HTMLResponse)
 async def ui_expenses_list(request: Request, db: Database = Depends(get_db)):
+    clear_trip_context()
     phase = compute_phase(db)
     settings = get_settings()
-    rows = db.list_expenses()
+    trip_id = get_active_trip_id(db)
+    rows = db.list_expenses(trip_id=trip_id)
     grouped = group_expenses_by_date(rows)
 
     return templates.TemplateResponse(
@@ -401,14 +416,16 @@ async def ui_settings(request: Request, db: Database = Depends(get_db)):
     Displays current values with forms for each logical section. POST handler
     re-renders same template with success/error messages.
     """
+    clear_trip_context()
     phase = compute_phase(db)
     settings = get_settings()
-    alerts = collect_alerts(db)
-    trip_dates = db.get_trip_dates()
+    trip_id = get_active_trip_id(db)
+    alerts = collect_alerts(db, trip_id=trip_id)
+    trip_dates = db.get_trip_dates(trip_id=trip_id)
     th = get_thresholds(db)
     existing_rows = {
         r["currency"]: r
-        for r in db.list_forex_cards()
+        for r in db.list_forex_cards(trip_id=trip_id)
         if r["currency"] in FOREX_CURRENCIES
     }
     # Ensure all supported forex currencies appear with default placeholders
@@ -459,13 +476,15 @@ async def ui_settings(request: Request, db: Database = Depends(get_db)):
 
 @router.post("/ui/settings", response_class=HTMLResponse)
 async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
+    clear_trip_context()
     phase = compute_phase(db)
     settings = get_settings()
-    alerts = collect_alerts(db)
+    trip_id = get_active_trip_id(db)
     form = await request.form()
     section = form.get("section", "").strip()
     messages: dict[str, list[str]] = {}
     errors: dict[str, list[str]] = {}
+    # trip_id already resolved above for reuse
 
     # Trip dates --------------------------------------------------
     if section == "trip_dates":
@@ -478,7 +497,7 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
             end_d = _dt.date.fromisoformat(end_raw)
             if end_d < start_d:
                 raise ValueError("End date must be >= start date")
-            db.set_trip_dates(start_d, end_d)
+            db.set_trip_dates(start_d, end_d, trip_id=trip_id)
             messages.setdefault("trip_dates", []).append("Trip dates updated")
         except Exception as exc:  # pragma: no cover (UI validation path)
             errors.setdefault("trip_dates", []).append(str(exc) or "Invalid trip dates")
@@ -506,7 +525,7 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
                     val = float(form.get(key))
                     if val < 0:
                         raise ValueError("Loaded amount cannot be negative")
-                    db.set_forex_card_loaded(cur, val)
+                    db.set_forex_card_loaded(cur, val, trip_id=trip_id)
                     updated_any = True
                 except Exception as exc:
                     errors.setdefault("forex_loads", []).append(f"{cur}: {exc}")
@@ -584,7 +603,8 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
             )
         else:
             try:
-                reset_trip_data(db, preserve_settings=preserve)
+                reset_trip_data(db, preserve_settings=preserve, trip_id=trip_id)
+                clear_trip_context()
                 messages.setdefault("reset_trip", []).append(
                     "Trip data cleared. Configure new trip dates to begin."
                 )
@@ -592,11 +612,12 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
                 errors.setdefault("reset_trip", []).append(str(exc) or "Reset failed")
 
     # Refresh state after potential mutations (shared) -----------
-    trip_dates = db.get_trip_dates()
+    trip_id = get_active_trip_id(db)
+    trip_dates = db.get_trip_dates(trip_id=trip_id)
     th = get_thresholds(db)
     existing_rows = {
         r["currency"]: r
-        for r in db.list_forex_cards()
+        for r in db.list_forex_cards(trip_id=trip_id)
         if r["currency"] in FOREX_CURRENCIES
     }
     forex_rows = {}
@@ -624,6 +645,7 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
             "currencies": get_widget_flag(db, "currencies", True),
         },
     }
+    alerts = collect_alerts(db, trip_id=trip_id)
 
     return templates.TemplateResponse(
         "settings.html",
@@ -650,9 +672,11 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
 async def ui_expense_edit_form(
     request: Request, expense_id: int, db: Database = Depends(get_db)
 ):
+    clear_trip_context()
     phase = compute_phase(db)
     settings = get_settings()
-    row = db.get_expense(expense_id)
+    trip_id = get_active_trip_id(db)
+    row = db.get_expense(expense_id, trip_id=trip_id)
     if not row:
         raise HTTPException(status_code=404, detail="Expense not found")
     form_state = {
@@ -685,9 +709,11 @@ async def ui_expense_edit_submit(
     description: str | None = Form(None),
     db: Database = Depends(get_db),
 ):
+    clear_trip_context()
     phase = compute_phase(db)
     settings = get_settings()
-    row = db.get_expense(expense_id)
+    trip_id = get_active_trip_id(db)
+    row = db.get_expense(expense_id, trip_id=trip_id)
     if not row:
         raise HTTPException(status_code=404, detail="Expense not found")
     errors: List[str] = []
@@ -752,10 +778,11 @@ async def ui_expense_edit_submit(
                 new_inr_equivalent=conv.inr_equivalent,
                 new_exchange_rate=conv.rate,
                 budget_delta=budget_delta,
+                trip_id=trip_id,
             )
             updated = True
             # Refresh row
-            row = db.get_expense(expense_id) or row
+            row = db.get_expense(expense_id, trip_id=trip_id) or row
         except Exception:
             errors.append("Failed to update expense")
 
@@ -786,15 +813,17 @@ async def ui_expense_delete(
     request: Request, expense_id: int, db: Database = Depends(get_db)
 ):
     # Perform delete then redirect via simple HTML (no redirect helper to keep minimal deps)
+    clear_trip_context()
+    trip_id = get_active_trip_id(db)
     try:
-        db.delete_expense_with_budget(expense_id)
+        db.delete_expense_with_budget(expense_id, trip_id=trip_id)
     except Exception:
         # ignore errors to keep idempotent feel
         pass
     # After deletion route back to list
     phase = compute_phase(db)
     settings = get_settings()
-    rows = db.list_expenses()
+    rows = db.list_expenses(trip_id=trip_id)
     grouped = group_expenses_by_date(rows)
 
     return templates.TemplateResponse(

@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+from datetime import date, datetime
+from typing import Literal, Optional
+
+from pydantic import BaseModel, root_validator, validator
+
+
+class TripBase(BaseModel):
+    name: str
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+
+    @validator("name")
+    def _name_not_blank(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("name cannot be empty")
+        return value.strip()
+
+    @validator("end_date")
+    def _end_not_before_start(cls, end: Optional[date], values: dict) -> Optional[date]:
+        start: Optional[date] = values.get("start_date")
+        if end and start and end < start:
+            raise ValueError("end_date cannot be before start_date")
+        return end
+
+
+class TripCreate(TripBase):
+    status: Literal["active", "archived"] = "active"
+    make_active: bool = False
+
+
+class TripUpdate(BaseModel):
+    name: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    status: Optional[Literal["active", "archived"]] = None
+
+    @root_validator
+    def _at_least_one(cls, values: dict) -> dict:
+        if not any(values.get(field) is not None for field in ("name", "start_date", "end_date", "status")):
+            raise ValueError("at least one field must be provided")
+        return values
+
+    @validator("name")
+    def _name_not_blank(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.strip():
+            raise ValueError("name cannot be empty")
+        return value.strip() if value is not None else None
+
+    @validator("end_date")
+    def _end_not_before_start(cls, end: Optional[date], values: dict) -> Optional[date]:
+        start: Optional[date] = values.get("start_date")
+        if end and start and end < start:
+            raise ValueError("end_date cannot be before start_date")
+        return end
+
+
+class TripOut(TripBase):
+    id: int
+    status: Literal["active", "archived"]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+

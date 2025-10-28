@@ -1,0 +1,181 @@
+from __future__ import annotations
+
+from datetime import date, datetime
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from app.core.config import get_settings
+from app.db.dal import Database
+from app.models.trip import TripCreate, TripUpdate, TripOut
+from app.models.timeline import TripDates
+from app.services.trip_context import clear_trip_context
+
+router = APIRouter(prefix="/trips", tags=["trips"])
+
+
+def get_db() -> Database:
+    settings = get_settings()
+    return Database(settings.db_path)
+
+
+def _row_to_trip(row: dict) -> TripOut:
+    start_raw = row.get("start_date")
+    end_raw = row.get("end_date")
+    created_raw = row.get("created_at")
+    updated_raw = row.get("updated_at")
+    return TripOut(
+        id=int(row["id"]),
+        name=row["name"],
+        start_date=date.fromisoformat(start_raw) if start_raw else None,
+        end_date=date.fromisoformat(end_raw) if end_raw else None,
+        status=row["status"],
+        created_at=datetime.fromisoformat(created_raw.replace("Z", ""))
+        if isinstance(created_raw, str)
+        else created_raw,
+        updated_at=datetime.fromisoformat(updated_raw.replace("Z", ""))
+        if isinstance(updated_raw, str)
+        else updated_raw,
+    )
+
+
+@router.get("/", response_model=list[TripOut], summary="List trips")
+async def list_trips(
+    include_archived: bool = Query(
+        True, description="Include trips with status 'archived' in results"
+    ),
+    db: Database = Depends(get_db),
+):
+    rows = db.list_trips(include_archived=include_archived)
+    return [_row_to_trip(r) for r in rows]
+
+
+@router.post(
+    "/", response_model=TripOut, status_code=status.HTTP_201_CREATED, summary="Create trip"
+)
+async def create_trip(payload: TripCreate, db: Database = Depends(get_db)):
+    if payload.make_active and payload.status == "archived":
+        raise HTTPException(
+            status_code=400, detail="cannot set make_active when status=archived"
+        )
+    try:
+        trip_id = db.create_trip(
+            name=payload.name,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            status=payload.status,
+            make_active=payload.make_active,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    row = db.get_trip(trip_id)
+    if not row:
+        raise HTTPException(status_code=500, detail="trip not found after creation")
+    if payload.make_active or payload.status == "active":
+        clear_trip_context()
+    return _row_to_trip(row)
+
+
+@router.get(
+    "/{trip_id}",
+    response_model=TripOut,
+    summary="Get trip details",
+)
+async def get_trip(trip_id: int, db: Database = Depends(get_db)):
+    row = db.get_trip(trip_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="trip not found")
+    return _row_to_trip(row)
+
+
+@router.patch(
+    "/{trip_id}",
+    response_model=TripOut,
+    summary="Update trip metadata",
+)
+async def update_trip(trip_id: int, payload: TripUpdate, db: Database = Depends(get_db)):
+    updates: dict[str, object] = {}
+    if payload.name is not None:
+        updates["name"] = payload.name
+    if payload.start_date is not None:
+        updates["start_date"] = payload.start_date
+    if payload.end_date is not None:
+        updates["end_date"] = payload.end_date
+    if payload.status is not None:
+        updates["status"] = payload.status
+    try:
+        db.update_trip(trip_id, **updates)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    row = db.get_trip(trip_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="trip not found")
+    if payload.status is not None:
+        clear_trip_context()
+    return _row_to_trip(row)
+
+
+@router.post(
+    "/{trip_id}/activate",
+    response_model=TripOut,
+    summary="Set active trip",
+)
+async def activate_trip(trip_id: int, db: Database = Depends(get_db)):
+    try:
+        db.set_active_trip(trip_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="trip not found")
+    clear_trip_context()
+    row = db.get_trip(trip_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="trip not found")
+    return _row_to_trip(row)
+
+
+@router.post(
+    "/{trip_id}/archive",
+    response_model=TripOut,
+    summary="Archive trip",
+)
+async def archive_trip(trip_id: int, db: Database = Depends(get_db)):
+    try:
+        db.update_trip(trip_id, status="archived")
+    except ValueError:
+        raise HTTPException(status_code=404, detail="trip not found")
+    clear_trip_context()
+    row = db.get_trip(trip_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="trip not found")
+    return _row_to_trip(row)
+
+
+@router.get(
+    "/{trip_id}/dates",
+    response_model=TripDates,
+    summary="Get trip date range",
+)
+async def get_trip_dates(trip_id: int, db: Database = Depends(get_db)):
+    data = db.get_trip_dates(trip_id=trip_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="trip dates not set")
+    return TripDates(**data)
+
+
+@router.put(
+    "/{trip_id}/dates",
+    response_model=TripDates,
+    summary="Set trip date range",
+)
+async def set_trip_dates(
+    trip_id: int, payload: TripDates, db: Database = Depends(get_db)
+):
+    try:
+        db.set_trip_dates(
+            start_date=payload.start_date, end_date=payload.end_date, trip_id=trip_id
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail="failed to persist trip dates"
+        ) from exc
+    clear_trip_context()
+    return payload

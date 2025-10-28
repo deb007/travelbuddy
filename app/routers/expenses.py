@@ -16,6 +16,7 @@ from app.services.rates.cache_service import (
     CentralRateCacheService,
 )
 from app.services.rates.conversion import compute_inr_equivalent
+from app.services.trip_context import get_active_trip_id, clear_trip_context
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 
@@ -64,7 +65,12 @@ async def create_expense(
     payload: ExpenseIn,
     db: Database = Depends(get_db),
     rate_service: RateServiceFacade = Depends(get_rate_service),
+    trip_id: Optional[int] = Query(
+        None, description="Trip identifier (defaults to active trip)"
+    ),
 ):
+    clear_trip_context()
+    resolved_trip = trip_id if trip_id is not None else get_active_trip_id(db)
     # 1. Domain validation hook (trip date boundaries etc. later)
     validate_expense_domain(payload)
 
@@ -79,12 +85,13 @@ async def create_expense(
             expense=payload,
             inr_equivalent=inr_equivalent,
             exchange_rate=exchange_rate,
+            trip_id=resolved_trip,
         )
     except Exception as e:  # pragma: no cover - generic safety
         raise HTTPException(status_code=500, detail="failed to persist expense") from e
 
     # 4. Fetch row to build response
-    row = db.get_expense(expense_id)
+    row = db.get_expense(expense_id, trip_id=resolved_trip)
     if not row:
         raise HTTPException(status_code=500, detail="expense not found after insert")
 
@@ -104,8 +111,13 @@ async def list_expenses_endpoint(
         None,
         description="Filter by trip phase (pre-trip|trip). pre-trip = expenses dated before configured trip start; trip = on/after start. If trip dates not configured: phase=pre-trip returns empty list; phase=trip returns all.",
     ),
+    trip_id: Optional[int] = Query(
+        None, description="Trip identifier (defaults to active trip)"
+    ),
     db: Database = Depends(get_db),
 ):
+    clear_trip_context()
+    resolved_trip = trip_id if trip_id is not None else get_active_trip_id(db)
     # 1. Date ordering validation (base user filters)
     if start_date and end_date and start_date > end_date:
         raise HTTPException(
@@ -121,7 +133,7 @@ async def list_expenses_endpoint(
         phase = phase.lower()
         if phase not in {"pre-trip", "trip"}:
             raise HTTPException(status_code=400, detail="invalid phase value")
-        trip_dates = db.get_trip_dates()
+        trip_dates = db.get_trip_dates(trip_id=resolved_trip)
         if trip_dates is None:
             # Trip dates not set yet: pre-trip => empty window, trip => no additional restriction
             if phase == "pre-trip":
@@ -146,7 +158,12 @@ async def list_expenses_endpoint(
                     return []
 
     # 4. Fetch after applying any derived phase constraints
-    rows = db.list_expenses(start_date=start_date, end_date=end_date, currency=currency)
+    rows = db.list_expenses(
+        start_date=start_date,
+        end_date=end_date,
+        currency=currency,
+        trip_id=resolved_trip,
+    )
     return [_row_to_expense_out(r) for r in rows]
 
 
@@ -158,9 +175,14 @@ async def patch_expense(
     payload: ExpenseUpdateIn,
     db: Database = Depends(get_db),
     rate_service: RateServiceFacade = Depends(get_rate_service),
+    trip_id: Optional[int] = Query(
+        None, description="Trip identifier (defaults to active trip)"
+    ),
 ):
+    clear_trip_context()
+    resolved_trip = trip_id if trip_id is not None else get_active_trip_id(db)
     # 1. Fetch existing expense
-    row = db.get_expense(expense_id)
+    row = db.get_expense(expense_id, trip_id=resolved_trip)
     if not row:
         raise HTTPException(status_code=404, detail="expense not found")
 
@@ -205,6 +227,7 @@ async def patch_expense(
             new_inr_equivalent=new_inr_equivalent,
             new_exchange_rate=new_exchange_rate,
             budget_delta=budget_delta,
+            trip_id=resolved_trip,
         )
     except ValueError:
         raise HTTPException(status_code=404, detail="expense not found")
@@ -212,7 +235,7 @@ async def patch_expense(
         raise HTTPException(status_code=500, detail="failed to update expense") from e
 
     # 6. Return updated record
-    updated = db.get_expense(expense_id)
+    updated = db.get_expense(expense_id, trip_id=resolved_trip)
     if not updated:
         raise HTTPException(status_code=500, detail="expense disappeared after update")
     return _row_to_expense_out(updated)
@@ -224,9 +247,14 @@ async def patch_expense(
 async def delete_expense(
     expense_id: int,
     db: Database = Depends(get_db),
+    trip_id: Optional[int] = Query(
+        None, description="Trip identifier (defaults to active trip)"
+    ),
 ):
+    clear_trip_context()
+    resolved_trip = trip_id if trip_id is not None else get_active_trip_id(db)
     try:
-        db.delete_expense_with_budget(expense_id)
+        db.delete_expense_with_budget(expense_id, trip_id=resolved_trip)
     except ValueError:
         raise HTTPException(status_code=404, detail="expense not found")
     except Exception as e:  # pragma: no cover

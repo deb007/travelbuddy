@@ -3,6 +3,7 @@ from datetime import date
 from typing import Literal, Optional
 from app.db.dal import Database
 from app.core.config import get_settings
+from app.services.trip_context import get_active_trip_id
 
 Phase = Literal["pre-trip", "trip"]
 
@@ -14,7 +15,8 @@ def _get_db() -> Database:
 
 def get_trip_dates(db: Optional[Database] = None):
     db = db or _get_db()
-    return db.get_trip_dates()
+    trip_id = get_active_trip_id(db)
+    return db.get_trip_dates(trip_id=trip_id)
 
 
 def resolve_phase(d: date, trip_dates: Optional[dict] = None) -> Phase:

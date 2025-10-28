@@ -15,6 +15,7 @@ from app.services.analytics_utils import (
     compute_category_breakdown,
     compute_trend_data,
 )
+from app.services.trip_context import get_active_trip_id, clear_trip_context
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -68,6 +69,9 @@ class TrendPoint(BaseModel):
 async def daily_totals_endpoint(
     start_date: Optional[date] = Query(None, description="Filter start date inclusive"),
     end_date: Optional[date] = Query(None, description="Filter end date inclusive"),
+    trip_id: Optional[int] = Query(
+        None, description="Trip identifier (defaults to active trip)"
+    ),
     db: Database = Depends(get_db),
 ):
     """Return aggregated INR totals per day ordered ascending by date.
@@ -81,7 +85,11 @@ async def daily_totals_endpoint(
         raise HTTPException(
             status_code=400, detail="start_date cannot be after end_date"
         )
-    rows = db.daily_totals(start_date=start_date, end_date=end_date)
+    clear_trip_context()
+    resolved_trip = trip_id if trip_id is not None else get_active_trip_id(db)
+    rows = db.daily_totals(
+        start_date=start_date, end_date=end_date, trip_id=resolved_trip
+    )
     # DAL returns keys: day, total_inr
     return [DailyTotal(date=r["day"], total_inr=r["total_inr"]) for r in rows]
 
@@ -95,13 +103,18 @@ async def average_daily_spend_endpoint(
     as_of: Optional[date] = Query(
         None, description="Optional 'as of' date (defaults to today)"
     ),
+    trip_id: Optional[int] = Query(
+        None, description="Trip identifier (defaults to active trip)"
+    ),
     db: Database = Depends(get_db),
 ):
     """Compute average daily spend since earliest expense date up to as_of (inclusive).
 
     If there are no expenses returns zeros. Days elapsed counts inclusive span.
     """
-    result = compute_average_daily_spend(db, as_of=as_of)
+    clear_trip_context()
+    resolved_trip = trip_id if trip_id is not None else get_active_trip_id(db)
+    result = compute_average_daily_spend(db, as_of=as_of, trip_id=resolved_trip)
     return AverageDailySpend(
         total_inr=result.total_inr,
         days_elapsed=result.days_elapsed,
@@ -118,6 +131,9 @@ async def remaining_daily_budget_endpoint(
     as_of: Optional[date] = Query(
         None, description="Optional 'as of' date (defaults to today)"
     ),
+    trip_id: Optional[int] = Query(
+        None, description="Trip identifier (defaults to active trip)"
+    ),
     db: Database = Depends(get_db),
 ):
     """Compute remaining daily budget based on INR budget and trip dates.
@@ -125,7 +141,9 @@ async def remaining_daily_budget_endpoint(
     If trip dates not configured or trip already ended relative to as_of, returns zeros.
     days_left includes the as_of date and trip end date.
     """
-    result = compute_remaining_daily_budget(db, as_of=as_of)
+    clear_trip_context()
+    resolved_trip = trip_id if trip_id is not None else get_active_trip_id(db)
+    result = compute_remaining_daily_budget(db, as_of=as_of, trip_id=resolved_trip)
     return RemainingDailyBudget(
         remaining_inr=result.remaining_inr,
         days_left=result.days_left,
@@ -141,6 +159,9 @@ async def remaining_daily_budget_endpoint(
 async def currency_breakdown_endpoint(
     start_date: Optional[date] = Query(None, description="Filter start date inclusive"),
     end_date: Optional[date] = Query(None, description="Filter end date inclusive"),
+    trip_id: Optional[int] = Query(
+        None, description="Trip identifier (defaults to active trip)"
+    ),
     db: Database = Depends(get_db),
 ):
     """Return per-currency totals and percent of overall INR total.
@@ -152,7 +173,11 @@ async def currency_breakdown_endpoint(
         raise HTTPException(
             status_code=400, detail="start_date cannot be after end_date"
         )
-    items = compute_currency_breakdown(db, start_date=start_date, end_date=end_date)
+    clear_trip_context()
+    resolved_trip = trip_id if trip_id is not None else get_active_trip_id(db)
+    items = compute_currency_breakdown(
+        db, start_date=start_date, end_date=end_date, trip_id=resolved_trip
+    )
     return [
         CurrencyBreakdownItem(
             currency=i.currency,
@@ -172,6 +197,9 @@ async def currency_breakdown_endpoint(
 async def category_breakdown_endpoint(
     start_date: Optional[date] = Query(None, description="Filter start date inclusive"),
     end_date: Optional[date] = Query(None, description="Filter end date inclusive"),
+    trip_id: Optional[int] = Query(
+        None, description="Trip identifier (defaults to active trip)"
+    ),
     db: Database = Depends(get_db),
 ):
     """Return per-category INR totals and percent of grand total.
@@ -183,7 +211,11 @@ async def category_breakdown_endpoint(
         raise HTTPException(
             status_code=400, detail="start_date cannot be after end_date"
         )
-    items = compute_category_breakdown(db, start_date=start_date, end_date=end_date)
+    clear_trip_context()
+    resolved_trip = trip_id if trip_id is not None else get_active_trip_id(db)
+    items = compute_category_breakdown(
+        db, start_date=start_date, end_date=end_date, trip_id=resolved_trip
+    )
     return [
         CategoryBreakdownItem(
             category=i.category, inr_total=i.inr_total, percent=i.percent
@@ -200,6 +232,9 @@ async def category_breakdown_endpoint(
 async def trend_endpoint(
     start_date: Optional[date] = Query(None, description="Filter start date inclusive"),
     end_date: Optional[date] = Query(None, description="Filter end date inclusive"),
+    trip_id: Optional[int] = Query(
+        None, description="Trip identifier (defaults to active trip)"
+    ),
     db: Database = Depends(get_db),
 ):
     """Return ordered daily INR totals with cumulative sum for charting.
@@ -212,7 +247,11 @@ async def trend_endpoint(
         raise HTTPException(
             status_code=400, detail="start_date cannot be after end_date"
         )
-    points = compute_trend_data(db, start_date=start_date, end_date=end_date)
+    clear_trip_context()
+    resolved_trip = trip_id if trip_id is not None else get_active_trip_id(db)
+    points = compute_trend_data(
+        db, start_date=start_date, end_date=end_date, trip_id=resolved_trip
+    )
     return [
         TrendPoint(
             date=p.date,
