@@ -3,13 +3,20 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 
 from app.core.config import get_settings
 from app.db.dal import Database
-from app.models.trip import TripCreate, TripUpdate, TripOut
+from app.models.trip import (
+    TripCreate,
+    TripUpdate,
+    TripOut,
+    TripResetRequest,
+    TripResetAllRequest,
+)
 from app.models.timeline import TripDates
 from app.services.trip_context import clear_trip_context
+from app.services.reset_utils import reset_trip_data
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -146,6 +153,62 @@ async def archive_trip(trip_id: int, db: Database = Depends(get_db)):
     row = db.get_trip(trip_id)
     if not row:
         raise HTTPException(status_code=404, detail="trip not found")
+    return _row_to_trip(row)
+
+
+@router.post(
+    "/{trip_id}/reset",
+    response_model=TripOut,
+    summary="Reset trip data",
+)
+async def reset_trip(
+    trip_id: int,
+    payload: TripResetRequest = Body(default=TripResetRequest()),
+    db: Database = Depends(get_db),
+):
+    row = db.get_trip(trip_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="trip not found")
+    try:
+        reset_trip_data(
+            db,
+            preserve_settings=payload.preserve_settings,
+            trip_id=trip_id,
+            wipe_all=False,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=500, detail="failed to reset trip") from exc
+    clear_trip_context()
+    row = db.get_trip(trip_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="trip not found after reset")
+    return _row_to_trip(row)
+
+
+@router.post(
+    "/reset-all",
+    response_model=TripOut,
+    summary="Wipe all trips and data",
+)
+async def reset_all_trips(
+    payload: TripResetAllRequest = Body(default=TripResetAllRequest()),
+    db: Database = Depends(get_db),
+):
+    try:
+        reset_trip_data(
+            db,
+            preserve_settings=payload.preserve_settings,
+            trip_id=None,
+            wipe_all=True,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=500, detail="failed to reset all trips") from exc
+    clear_trip_context()
+    row = db.get_active_trip()
+    if not row:
+        raise HTTPException(status_code=500, detail="no active trip after reset")
     return _row_to_trip(row)
 
 

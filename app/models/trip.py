@@ -65,3 +65,10 @@ class TripOut(TripBase):
     class Config:
         orm_mode = True
 
+
+class TripResetRequest(BaseModel):
+    preserve_settings: bool = True
+
+
+class TripResetAllRequest(BaseModel):
+    preserve_settings: bool = True

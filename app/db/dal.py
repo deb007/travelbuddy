@@ -185,6 +185,14 @@ class Database:
             cur.execute(sql, params)
             return [dict(r) for r in cur.fetchall()]
 
+    def count_expenses(self, trip_id: Optional[int] = None) -> int:
+        with self._connect() as conn:
+            cur = conn.cursor()
+            tid = self._resolve_trip_id(trip_id, cur)
+            cur.execute("SELECT COUNT(*) FROM expenses WHERE trip_id = ?", (tid,))
+            row = cur.fetchone()
+            return int(row[0] if row and row[0] is not None else 0)
+
     # ------------------------------------------------------------------
     # Aggregations (trip scoped)
     def total_inr_spent(self, trip_id: Optional[int] = None) -> float:

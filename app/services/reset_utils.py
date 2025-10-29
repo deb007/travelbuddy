@@ -76,6 +76,9 @@ def reset_trip_data(
 
 def _reset_single_trip(cur, trip_id: int) -> None:
     """Remove transactional data for a single trip."""
+    cur.execute("SELECT 1 FROM trips WHERE id = ?", (trip_id,))
+    if not cur.fetchone():
+        raise ValueError("Trip not found")
     cur.execute("DELETE FROM expenses WHERE trip_id = ?", (trip_id,))
     cur.execute("DELETE FROM budgets WHERE trip_id = ?", (trip_id,))
     cur.execute("DELETE FROM forex_cards WHERE trip_id = ?", (trip_id,))

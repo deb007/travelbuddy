@@ -1,0 +1,318 @@
+{% extends 'base.html' %}
+{% block title %}Trip Management · Travel Expense Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+    <div class="space-y-1">
+        <h1 class="text-xl font-semibold tracking-wide text-slate-100">Trip Management</h1>
+        <p class="text-sm text-slate-400">Create trips, adjust metadata, and drive which trip powers the dashboards.</p>
+    </div>
+    <div class="flex flex-col sm:items-end gap-3">
+        {% if summary %}
+        <div
+            class="bg-slate-800/70 border border-slate-700/70 rounded-lg px-4 py-3 text-xs sm:text-sm text-slate-200 space-y-1">
+            <div class="text-[11px] uppercase tracking-wide text-slate-400">Overview</div>
+            <div><span class="text-slate-400">Total trips:</span> {{ summary.total }}</div>
+            <div><span class="text-slate-400">Active:</span> {{ summary.active }}</div>
+            <div><span class="text-slate-400">Archived:</span> {{ summary.archived }}</div>
+            <div><span class="text-slate-400">Lifetime INR spend:</span> ₹ {{ summary.total_spend_label }}</div>
+        </div>
+        {% endif %}
+        <a href="/ui/trips/history"
+            class="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-blue-300 hover:text-blue-200 transition-colors">
+            View Archived Summaries →
+        </a>
+    </div>
+</div>
+
+    {% if errors.general %}
+    <div class="bg-red-900/40 border border-red-700/60 text-red-200 text-sm rounded-lg px-4 py-3">
+        <ul class="space-y-1">
+            {% for err in errors.general %}
+            <li>{{ err }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <section class="bg-slate-800/60 border border-slate-700/70 rounded-lg p-5 space-y-4">
+        <div class="space-y-1">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-300">Create Trip</h2>
+            <p class="text-xs text-slate-400">Provide a name and optional dates. Trips marked active will immediately
+                become the visible context across the app.</p>
+        </div>
+        {% if messages.create %}
+        <div class="bg-emerald-900/40 border border-emerald-700/60 text-emerald-200 text-xs rounded px-3 py-2">
+            {{ messages.create[0] }}
+        </div>
+        {% endif %}
+        {% if errors.create %}
+        <div class="bg-red-900/40 border border-red-700/60 text-red-200 text-xs rounded px-3 py-2 space-y-1">
+            {% for err in errors.create %}
+            <div>{{ err }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        <form method="post" action="/ui/trips" class="space-y-4">
+            <input type="hidden" name="section" value="create" />
+            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <label class="block text-xs font-semibold tracking-wide text-slate-300">Trip name
+                    <input type="text" name="name" value="{{ create_form.name }}"
+                        class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="e.g. Singapore 2025" required />
+                </label>
+                <label class="block text-xs font-semibold tracking-wide text-slate-300">Status
+                    <select name="status"
+                        class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                        {% for opt in ['active', 'archived'] %}
+                        <option value="{{ opt }}" {% if create_form.status==opt %}selected{% endif %}>{{ opt|title }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="block text-xs font-semibold tracking-wide text-slate-300">Start date
+                    <input type="date" name="start_date" value="{{ create_form.start_date }}"
+                        class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                </label>
+                <label class="block text-xs font-semibold tracking-wide text-slate-300">End date
+                    <input type="date" name="end_date" value="{{ create_form.end_date }}"
+                        class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                </label>
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
+                    <input type="checkbox" name="make_active" class="accent-blue-500" {% if create_form.make_active %}
+                        checked{% endif %} />
+                    Set as active after creating
+                </label>
+                <button
+                    class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow transition-colors">
+                    Save Trip
+                </button>
+            </div>
+        </form>
+    </section>
+
+    {% if active_trip_summary %}
+    <section class="bg-blue-900/20 border border-blue-700/40 rounded-lg p-5 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-blue-200">Active Trip</h2>
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-blue-600/70 text-white">In
+                use</span>
+        </div>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+            <div>
+                <div class="text-xs text-slate-400 uppercase tracking-wide">Name</div>
+                <div class="text-base font-semibold text-slate-100">{{ active_trip_summary.name }}</div>
+            </div>
+            <div>
+                <div class="text-xs text-slate-400 uppercase tracking-wide">Start</div>
+                <div class="text-slate-200">{{ active_trip_summary.start_display }}</div>
+            </div>
+            <div>
+                <div class="text-xs text-slate-400 uppercase tracking-wide">End</div>
+                <div class="text-slate-200">{{ active_trip_summary.end_display }}</div>
+            </div>
+            <div>
+                <div class="text-xs text-slate-400 uppercase tracking-wide">Updated</div>
+                <div class="text-slate-200">{{ active_trip_summary.updated_display }}</div>
+            </div>
+            <div>
+                <div class="text-xs text-slate-400 uppercase tracking-wide">Duration</div>
+                <div class="text-slate-200">
+                    {% if active_trip_summary.duration_days %}
+                    {{ active_trip_summary.duration_days }} day{% if active_trip_summary.duration_days != 1 %}s{% endif
+                    %}
+                    {% else %}
+                    Not set
+                    {% endif %}
+                </div>
+            </div>
+            <div>
+                <div class="text-xs text-slate-400 uppercase tracking-wide">Spend (₹)</div>
+                <div class="text-slate-200">₹ {{ active_trip_summary.spent_display }}</div>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="space-y-4">
+        <div class="flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-300">Trip History</h2>
+            {% if trips %}
+            <span class="text-xs text-slate-400">{{ trips|length }} trip{% if trips|length != 1 %}s{% endif %} total</span>
+            {% endif %}
+        </div>
+        {% if trips %}
+        <div class="space-y-4">
+            {% for trip in trips %}
+            {% set update_key = 'trip_' ~ trip.id ~ '_update' %}
+            {% set archive_key = 'trip_' ~ trip.id ~ '_archive' %}
+            {% set activate_key = 'trip_' ~ trip.id ~ '_activate' %}
+            {% set reset_key = 'trip_' ~ trip.id ~ '_reset' %}
+            <div id="trip-{{ trip.id }}"
+                class="rounded-lg p-5 space-y-4 border {{ 'border-blue-500/60 bg-slate-900/60 shadow-lg shadow-blue-900/40' if focus_trip_id == trip.id else 'border-slate-700/60 bg-slate-900/40' }}">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h3 class="text-base font-semibold text-slate-100">{{ trip.name }}</h3>
+                            <span
+                                class="px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide {{ 'bg-emerald-600/60 text-emerald-100' if trip.status == 'active' else 'bg-slate-700 text-slate-200' }}">
+                                {{ trip.status }}
+                            </span>
+                            {% if trip.is_active %}
+                            <span
+                                class="px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-blue-600/70 text-white">
+                                Active now
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div class="text-xs text-slate-400">Updated {{ trip.updated_display }}</div>
+                        <div class="text-xs text-slate-500">Created {{ trip.created_display }}</div>
+                    </div>
+                    <div class="text-xs text-right text-slate-300 space-y-1">
+                        <div><span class="text-slate-400">Start:</span> {{ trip.start_display }}</div>
+                        <div><span class="text-slate-400">End:</span> {{ trip.end_display }}</div>
+                        {% if trip.duration_days %}
+                        <div><span class="text-slate-400">Duration:</span> {{ trip.duration_days }} day{% if trip.duration_days != 1 %}s{% endif %}
+                        </div>
+                        {% endif %}
+                        <div><span class="text-slate-400">INR Spend:</span> ₹ {{ trip.spent_display }}</div>
+                    </div>
+                </div>
+
+                {% if messages.get(update_key) %}
+                <div class="bg-emerald-900/40 border border-emerald-700/60 text-emerald-200 text-xs rounded px-3 py-2">
+                    {% for msg in messages.get(update_key) %}
+                    <div>{{ msg }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if errors.get(update_key) %}
+                <div class="bg-red-900/40 border border-red-700/60 text-red-200 text-xs rounded px-3 py-2 space-y-1">
+                    {% for err in errors.get(update_key) %}
+                    <div>{{ err }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if messages.get(reset_key) %}
+                <div class="bg-emerald-900/40 border border-emerald-700/60 text-emerald-200 text-xs rounded px-3 py-2">
+                    {% for msg in messages.get(reset_key) %}
+                    <div>{{ msg }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if errors.get(reset_key) %}
+                <div class="bg-red-900/40 border border-red-700/60 text-red-200 text-xs rounded px-3 py-2 space-y-1">
+                    {% for err in errors.get(reset_key) %}
+                    <div>{{ err }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <details class="bg-slate-900/40 border border-slate-700/60 rounded-lg p-4 text-sm"
+                    {% if focus_trip_id == trip.id %}open{% endif %}>
+                    <summary
+                        class="cursor-pointer text-xs uppercase tracking-wide text-slate-300 font-semibold flex items-center gap-2">
+                        Edit trip details
+                    </summary>
+                    <form method="post" action="/ui/trips" class="mt-3 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <input type="hidden" name="section" value="update" />
+                        <input type="hidden" name="trip_id" value="{{ trip.id }}" />
+                        <label class="block text-xs font-semibold tracking-wide text-slate-300">Name
+                            <input type="text" name="name" value="{{ trip.form.name }}"
+                                class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                required />
+                        </label>
+                        <label class="block text-xs font-semibold tracking-wide text-slate-300">Status
+                            <select name="status"
+                                class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                {% for opt in ['active', 'archived'] %}
+                                <option value="{{ opt }}" {% if trip.form.status==opt %}selected{% endif %}>{{ opt|title
+                                    }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label class="block text-xs font-semibold tracking-wide text-slate-300">Start date
+                            <input type="date" name="start_date" value="{{ trip.form.start_date }}"
+                                class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                        </label>
+                        <label class="block text-xs font-semibold tracking-wide text-slate-300">End date
+                            <input type="date" name="end_date" value="{{ trip.form.end_date }}"
+                                class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                        </label>
+                        <div class="sm:col-span-2 lg:col-span-4">
+                            <button
+                                class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow transition-colors">
+                                Save Changes
+                            </button>
+                        </div>
+                    </form>
+                </details>
+
+                <div class="flex flex-wrap items-center gap-3">
+                    <form method="post" action="/ui/trips" class="inline">
+                        <input type="hidden" name="section" value="activate" />
+                        <input type="hidden" name="trip_id" value="{{ trip.id }}" />
+                        <button
+                            class="px-3 py-2 text-xs font-semibold rounded bg-blue-600 hover:bg-blue-500 text-white disabled:bg-slate-600 disabled:text-slate-300 transition-colors"
+                            {% if trip.is_active %}disabled title="Already active"{% endif %}>Set Active</button>
+                    </form>
+                    <form method="post" action="/ui/trips" class="inline">
+                        <input type="hidden" name="section" value="archive" />
+                        <input type="hidden" name="trip_id" value="{{ trip.id }}" />
+                        <button
+                            class="px-3 py-2 text-xs font-semibold rounded bg-slate-700 hover:bg-slate-600 text-slate-100 disabled:bg-slate-800 disabled:text-slate-500 transition-colors"
+                            {% if trip.status == 'archived' %}disabled title="Already archived"{% endif %}>Archive</button>
+                    </form>
+                    <form method="post" action="/ui/trips" class="inline"
+                        onsubmit="return confirm('Reset all data for {{ trip.name }}? This removes expenses, budgets, and forex records.');">
+                        <input type="hidden" name="section" value="reset_trip_data" />
+                        <input type="hidden" name="trip_id" value="{{ trip.id }}" />
+                        <input type="hidden" name="confirm" value="yes" />
+                        <button
+                            class="px-3 py-2 text-xs font-semibold rounded bg-red-700 hover:bg-red-600 text-white transition-colors">
+                            Reset Data
+                        </button>
+                    </form>
+                </div>
+
+                {% if messages.get(activate_key) %}
+                <div class="bg-emerald-900/40 border border-emerald-700/60 text-emerald-200 text-xs rounded px-3 py-2">
+                    {% for msg in messages.get(activate_key) %}
+                    <div>{{ msg }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if errors.get(activate_key) %}
+                <div class="bg-red-900/40 border border-red-700/60 text-red-200 text-xs rounded px-3 py-2 space-y-1">
+                    {% for err in errors.get(activate_key) %}
+                    <div>{{ err }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if messages.get(archive_key) %}
+                <div class="bg-emerald-900/40 border border-emerald-700/60 text-emerald-200 text-xs rounded px-3 py-2">
+                    {% for msg in messages.get(archive_key) %}
+                    <div>{{ msg }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if errors.get(archive_key) %}
+                <div class="bg-red-900/40 border border-red-700/60 text-red-200 text-xs rounded px-3 py-2 space-y-1">
+                    {% for err in errors.get(archive_key) %}
+                    <div>{{ err }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-slate-400">No trips found. Create your first trip above to get started.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

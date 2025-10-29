@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, Request, Form, HTTPException, status
@@ -43,10 +43,12 @@ from app.services.analytics_utils import (
 from app.services.rates.cache_service import get_central_rate_cache_service
 from app.models.constants import CURRENCIES, CATEGORIES, PAYMENT_METHODS
 from app.models.expense import ExpenseIn, ExpenseUpdateIn
+from app.models.trip import TripCreate, TripUpdate
 from app.services.expense_validation import validate_expense_domain
 from app.services.rates.conversion import compute_inr_equivalent
 from app.services.money import round2
 from app.services.trip_context import get_active_trip_id, clear_trip_context
+from app.services.reset_utils import reset_trip_data
 
 router = APIRouter(tags=["ui"])
 
@@ -87,6 +89,486 @@ def _trip_nav_context(db: Database, trip_id: Optional[int] = None) -> Dict[str, 
         "active_trip_id": tid,
         "trip_options": trips,
     }
+
+
+def _base_create_form_state() -> Dict[str, Any]:
+    return {
+        "name": "",
+        "start_date": "",
+        "end_date": "",
+        "status": "active",
+        "make_active": False,
+    }
+
+
+def _parse_checkbox(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "on", "yes", "y"}
+
+
+def _format_timestamp(raw: Optional[str]) -> str:
+    if not raw:
+        return "—"
+    cleaned = raw.rstrip("Z")
+    try:
+        dt_obj = datetime.fromisoformat(cleaned)
+        return dt_obj.strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return raw
+
+
+def _build_trip_management_context(
+    request: Request,
+    db: Database,
+    *,
+    phase: str,
+    version: str,
+    messages: Optional[Dict[str, List[str]]] = None,
+    errors: Optional[Dict[str, List[str]]] = None,
+    create_form_state: Optional[Dict[str, Any]] = None,
+    edit_overrides: Optional[Dict[int, Dict[str, Any]]] = None,
+    focus_trip_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    messages = messages or {}
+    errors = errors or {}
+    trip_rows = db.list_trips(include_archived=True)
+    edit_overrides = edit_overrides or {}
+    active_trip_id = get_active_trip_id(db)
+
+    create_state = _base_create_form_state()
+    if create_form_state:
+        create_state.update(create_form_state)
+    if not trip_rows and not create_form_state:
+        create_state["make_active"] = True
+    create_state["make_active"] = bool(create_state.get("make_active"))
+    create_state.setdefault("status", "active")
+    create_state.setdefault("start_date", "")
+    create_state.setdefault("end_date", "")
+    create_state.setdefault("name", "")
+
+    trips: List[Dict[str, Any]] = []
+    active_count = 0
+    archived_count = 0
+    total_spend = 0.0
+
+    for row in trip_rows:
+        status = row.get("status", "active")
+        if status == "archived":
+            archived_count += 1
+        else:
+            active_count += 1
+        tid = int(row["id"])
+        start_raw = row.get("start_date")
+        end_raw = row.get("end_date")
+        start_date = date.fromisoformat(start_raw) if start_raw else None
+        end_date = date.fromisoformat(end_raw) if end_raw else None
+        if start_date and end_date and end_date >= start_date:
+            duration_days = (end_date - start_date).days + 1
+        else:
+            duration_days = None
+        spent_inr = round2(db.total_inr_spent(trip_id=tid))
+        total_spend += spent_inr
+
+        form_defaults = {
+            "name": row.get("name", ""),
+            "start_date": start_date.isoformat() if start_date else "",
+            "end_date": end_date.isoformat() if end_date else "",
+            "status": status,
+        }
+        override = edit_overrides.get(tid)
+        if override:
+            merged_form = {**form_defaults, **override}
+        else:
+            merged_form = form_defaults
+
+        trips.append(
+            {
+                "id": tid,
+                "name": row.get("name", ""),
+                "status": status,
+                "is_active": tid == active_trip_id,
+                "start_display": start_date.strftime("%b %d, %Y")
+                if start_date
+                else "Not set",
+                "end_display": end_date.strftime("%b %d, %Y")
+                if end_date
+                else "Not set",
+                "duration_days": duration_days,
+                "created_display": _format_timestamp(row.get("created_at")),
+                "updated_display": _format_timestamp(row.get("updated_at")),
+                "spent_inr": spent_inr,
+                "spent_display": f"{spent_inr:,.2f}",
+                "form": merged_form,
+            }
+        )
+
+    total_spend = round2(total_spend)
+    summary = {
+        "total": len(trip_rows),
+        "active": active_count,
+        "archived": archived_count,
+        "total_spend": total_spend,
+        "total_spend_label": f"{total_spend:,.2f}",
+    }
+    active_trip_summary = next((t for t in trips if t["is_active"]), None)
+
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": version,
+        "trips": trips,
+        "summary": summary,
+        "messages": messages,
+        "errors": errors,
+        "create_form": create_state,
+        "active_trip_summary": active_trip_summary,
+        "focus_trip_id": focus_trip_id,
+    }
+    context.update(_trip_nav_context(db, trip_id=active_trip_id))
+    return context
+
+
+def _build_trip_history_list(db: Database) -> List[Dict[str, Any]]:
+    trip_rows = db.list_trips(include_archived=True)
+    summaries: List[Dict[str, Any]] = []
+    for row in trip_rows:
+        if row.get("status") != "archived":
+            continue
+        tid = int(row["id"])
+        start_raw = row.get("start_date")
+        end_raw = row.get("end_date")
+        start_date = date.fromisoformat(start_raw) if start_raw else None
+        end_date = date.fromisoformat(end_raw) if end_raw else None
+        if start_date and end_date and end_date >= start_date:
+            duration_days = (end_date - start_date).days + 1
+        else:
+            duration_days = None
+
+        total_spent = round2(db.total_inr_spent(trip_id=tid))
+        expense_count = db.count_expenses(trip_id=tid)
+        budgets = db.list_budgets(trip_id=tid)
+        budget_total_max = round2(
+            sum(float(b.get("max_amount") or 0.0) for b in budgets)
+        ) if budgets else 0.0
+        budget_total_spent = round2(
+            sum(float(b.get("spent_amount") or 0.0) for b in budgets)
+        ) if budgets else 0.0
+        budget_remaining = budget_total_max - budget_total_spent
+        if budget_remaining < 0:
+            budget_remaining = 0.0
+        budget_remaining = round2(budget_remaining)
+
+        currency_breakdown = compute_currency_breakdown(db, trip_id=tid)
+        top_currencies = currency_breakdown[:3]
+        sort_key = end_date or start_date
+
+        summaries.append(
+            {
+                "id": tid,
+                "name": row.get("name", ""),
+                "status": row.get("status", "archived"),
+                "start_display": start_date.strftime("%b %d, %Y")
+                if start_date
+                else "Not set",
+                "end_display": end_date.strftime("%b %d, %Y")
+                if end_date
+                else "Not set",
+                "duration_days": duration_days,
+                "total_spent": total_spent,
+                "total_spent_display": f"{total_spent:,.2f}",
+                "expense_count": expense_count,
+                "budget_total_max": budget_total_max,
+                "budget_total_max_display": f"{budget_total_max:,.2f}",
+                "budget_total_spent": budget_total_spent,
+                "budget_total_spent_display": f"{budget_total_spent:,.2f}",
+                "budget_remaining": budget_remaining,
+                "budget_remaining_display": f"{budget_remaining:,.2f}",
+                "top_currencies": top_currencies,
+                "updated_display": _format_timestamp(row.get("updated_at")),
+                "created_display": _format_timestamp(row.get("created_at")),
+                "export_url": f"/trips/{tid}",
+                "sort_key": sort_key,
+            }
+        )
+
+    summaries.sort(
+        key=lambda item: item["sort_key"] or date.min,
+        reverse=True,
+    )
+    for item in summaries:
+        item.pop("sort_key", None)
+    return summaries
+
+
+@router.get("/ui/trips", response_class=HTMLResponse)
+async def ui_trips(request: Request, db: Database = Depends(get_db)):
+    clear_trip_context()
+    phase = compute_phase(db)
+    settings = get_settings()
+    context = _build_trip_management_context(
+        request,
+        db,
+        phase=phase,
+        version=settings.version,
+    )
+    return templates.TemplateResponse("trips.html", context)
+
+
+@router.post("/ui/trips", response_class=HTMLResponse)
+async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
+    clear_trip_context()
+    phase = compute_phase(db)
+    settings = get_settings()
+    form = await request.form()
+    section = (form.get("section") or "").strip()
+    messages: Dict[str, List[str]] = {}
+    errors: Dict[str, List[str]] = {}
+    create_state: Optional[Dict[str, Any]] = None
+    edit_overrides: Dict[int, Dict[str, Any]] = {}
+    focus_trip_id: Optional[int] = None
+    valid_statuses = {"active", "archived"}
+
+    if section == "create":
+        name = (form.get("name") or "").strip()
+        start_raw = (form.get("start_date") or "").strip()
+        end_raw = (form.get("end_date") or "").strip()
+        status = (form.get("status") or "active").strip().lower()
+        make_active = _parse_checkbox(form.get("make_active"))
+        create_state = {
+            "name": name,
+            "start_date": start_raw,
+            "end_date": end_raw,
+            "status": status or "active",
+            "make_active": make_active,
+        }
+        if status not in valid_statuses:
+            errors.setdefault("create", []).append("Unsupported status selection.")
+        elif make_active and status == "archived":
+            errors.setdefault("create", []).append(
+                "Archived trips cannot be created as active."
+            )
+        else:
+            try:
+                payload = TripCreate(
+                    name=name,
+                    start_date=start_raw or None,
+                    end_date=end_raw or None,
+                    status=status or "active",
+                    make_active=make_active,
+                )
+                trip_id = db.create_trip(
+                    name=payload.name,
+                    start_date=payload.start_date,
+                    end_date=payload.end_date,
+                    status=payload.status,
+                    make_active=payload.make_active,
+                )
+                clear_trip_context()
+                focus_trip_id = trip_id
+                if payload.make_active or payload.status == "active":
+                    note = "Trip created and set active"
+                elif payload.status == "archived":
+                    note = "Trip created (archived)"
+                else:
+                    note = "Trip created"
+                messages.setdefault("create", []).append(note)
+                create_state = None
+            except ValidationError as ve:
+                formatted: List[str] = []
+                for err in ve.errors():
+                    loc_parts = [str(p) for p in err.get("loc", [])]
+                    loc = ".".join(loc_parts) if loc_parts else "trip"
+                    msg = err.get("msg", "Invalid value")
+                    formatted.append(f"{loc}: {msg}")
+                errors["create"] = formatted or ["Validation failed"]
+            except ValueError as exc:
+                errors.setdefault("create", []).append(
+                    str(exc) or "Failed to create trip"
+                )
+
+    elif section == "update":
+        trip_id_raw = form.get("trip_id")
+        try:
+            trip_id = int(trip_id_raw)
+        except (TypeError, ValueError):
+            errors.setdefault(
+                "general", []
+            ).append("Invalid trip identifier for update.")
+        else:
+            focus_trip_id = trip_id
+            key = f"trip_{trip_id}_update"
+            name_raw = (form.get("name") or "").strip()
+            start_raw = (form.get("start_date") or "").strip()
+            end_raw = (form.get("end_date") or "").strip()
+            status_raw = (form.get("status") or "").strip().lower()
+            override_state = {
+                "name": name_raw,
+                "start_date": start_raw,
+                "end_date": end_raw,
+                "status": status_raw or "active",
+            }
+            edit_overrides[trip_id] = override_state
+            if status_raw and status_raw not in valid_statuses:
+                errors.setdefault(key, []).append("Unsupported status selection.")
+            else:
+                payload_kwargs = {
+                    "name": name_raw or None,
+                    "start_date": start_raw or None,
+                    "end_date": end_raw or None,
+                    "status": status_raw or None,
+                }
+                try:
+                    payload = TripUpdate(**payload_kwargs)
+                    updates: Dict[str, Any] = {}
+                    if payload.name is not None:
+                        updates["name"] = payload.name
+                    if payload.start_date is not None:
+                        updates["start_date"] = payload.start_date
+                    if payload.end_date is not None:
+                        updates["end_date"] = payload.end_date
+                    if payload.status is not None:
+                        updates["status"] = payload.status
+                    db.update_trip(trip_id, **updates)
+                    clear_trip_context()
+                    edit_overrides.pop(trip_id, None)
+                    if payload.status is not None:
+                        messages.setdefault(key, []).append(
+                            f"Trip status updated to {payload.status}"
+                        )
+                    else:
+                        messages.setdefault(key, []).append("Trip details updated")
+                except ValidationError as ve:
+                    formatted: List[str] = []
+                    for err in ve.errors():
+                        loc_parts = [str(p) for p in err.get("loc", [])]
+                        loc = ".".join(loc_parts) if loc_parts else "trip"
+                        if loc == "__root__":
+                            loc = "update"
+                        msg = err.get("msg", "Invalid value")
+                        formatted.append(f"{loc}: {msg}")
+                    errors[key] = formatted or ["Validation failed"]
+                except ValueError as exc:
+                    errors.setdefault(key, []).append(
+                        str(exc) or "Failed to update trip"
+                    )
+
+    elif section == "archive":
+        trip_id_raw = form.get("trip_id")
+        try:
+            trip_id = int(trip_id_raw)
+        except (TypeError, ValueError):
+            errors.setdefault(
+                "general", []
+            ).append("Invalid trip identifier for archive action.")
+        else:
+            focus_trip_id = trip_id
+            key = f"trip_{trip_id}_archive"
+            try:
+                db.update_trip(trip_id, status="archived")
+                clear_trip_context()
+                messages.setdefault(key, []).append("Trip archived")
+            except ValueError as exc:
+                errors.setdefault(key, []).append(
+                    str(exc) or "Failed to archive trip"
+                )
+
+    elif section == "reset_trip_data":
+        trip_id_raw = form.get("trip_id")
+        try:
+            trip_id = int(trip_id_raw)
+        except (TypeError, ValueError):
+            errors.setdefault(
+                "general", []
+            ).append("Invalid trip identifier for reset action.")
+        else:
+            focus_trip_id = trip_id
+            key = f"trip_{trip_id}_reset"
+            confirm = form.get("confirm", "") == "yes"
+            preserve_local = form.get("preserve_settings") == "on"
+            if not confirm:
+                errors.setdefault(key, []).append("Reset cancelled by user.")
+            else:
+                try:
+                    reset_trip_data(
+                        db,
+                        preserve_settings=preserve_local,
+                        trip_id=trip_id,
+                        wipe_all=False,
+                    )
+                    clear_trip_context()
+                    messages.setdefault(key, []).append("Trip data reset.")
+                except ValueError as exc:
+                    errors.setdefault(key, []).append(str(exc))
+                except Exception as exc:
+                    errors.setdefault(key, []).append(
+                        str(exc) or "Failed to reset trip"
+                    )
+
+    elif section == "activate":
+        trip_id_raw = form.get("trip_id")
+        try:
+            trip_id = int(trip_id_raw)
+        except (TypeError, ValueError):
+            errors.setdefault(
+                "general", []
+            ).append("Invalid trip identifier for activation.")
+        else:
+            focus_trip_id = trip_id
+            key = f"trip_{trip_id}_activate"
+            try:
+                db.set_active_trip(trip_id)
+                clear_trip_context()
+                messages.setdefault(key, []).append("Trip set as active")
+            except ValueError:
+                errors.setdefault(key, []).append(
+                    "Trip not found or could not be activated"
+                )
+
+    else:
+        errors.setdefault("general", []).append(
+            "Unsupported action. Please retry from the trip form."
+        )
+
+    clear_trip_context()
+    context = _build_trip_management_context(
+        request,
+        db,
+        phase=phase,
+        version=settings.version,
+        messages=messages,
+        errors=errors,
+        create_form_state=create_state,
+        edit_overrides=edit_overrides,
+        focus_trip_id=focus_trip_id,
+    )
+    return templates.TemplateResponse("trips.html", context)
+
+
+@router.get("/ui/trips/history", response_class=HTMLResponse)
+async def ui_trips_history(request: Request, db: Database = Depends(get_db)):
+    clear_trip_context()
+    phase = compute_phase(db)
+    settings = get_settings()
+    histories = _build_trip_history_list(db)
+    total_spent = round2(sum(item["total_spent"] for item in histories)) if histories else 0.0
+    total_expenses = sum(item["expense_count"] for item in histories) if histories else 0
+    history_totals = {
+        "count": len(histories),
+        "total_spent": total_spent,
+        "total_spent_display": f"{total_spent:,.2f}",
+        "total_expenses": total_expenses,
+    }
+    active_trip_id = get_active_trip_id(db)
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "histories": histories,
+        "history_totals": history_totals,
+    }
+    context.update(_trip_nav_context(db, trip_id=active_trip_id))
+    return templates.TemplateResponse("trip_history.html", context)
 
 
 @router.get("/ui", response_class=HTMLResponse)
@@ -626,22 +1108,41 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
                 "Failed to update UI preferences"
             )
     elif section == "reset_trip":
-        from app.services.reset_utils import reset_trip_data
-
         confirm = form.get("confirm_reset") == "on"
         token = (form.get("confirm_token") or "").strip().lower()
         preserve = form.get("preserve_settings") == "on"
+        wipe_all = form.get("wipe_all") == "on"
+        target_trip_id: Optional[int] = trip_id
+        if not wipe_all:
+            trip_id_raw = form.get("trip_id")
+            if trip_id_raw:
+                try:
+                    target_trip_id = int(trip_id_raw)
+                except (TypeError, ValueError):
+                    errors.setdefault("reset_trip", []).append("Invalid trip identifier")
         if not confirm or token != "reset":
             errors.setdefault("reset_trip", []).append(
                 "Confirmation required: tick the box and type 'reset'"
             )
-        else:
+        if "reset_trip" not in errors:
             try:
-                reset_trip_data(db, preserve_settings=preserve, trip_id=trip_id)
-                clear_trip_context()
-                messages.setdefault("reset_trip", []).append(
-                    "Trip data cleared. Configure new trip dates to begin."
+                reset_trip_data(
+                    db,
+                    preserve_settings=preserve,
+                    trip_id=None if wipe_all else target_trip_id,
+                    wipe_all=wipe_all,
                 )
+                clear_trip_context()
+                if wipe_all:
+                    messages.setdefault("reset_trip", []).append(
+                        "All trips wiped. Default trip created and set active."
+                    )
+                else:
+                    messages.setdefault("reset_trip", []).append(
+                        "Trip data cleared. Configure new trip dates to begin."
+                    )
+            except ValueError as exc:
+                errors.setdefault("reset_trip", []).append(str(exc))
             except Exception as exc:
                 errors.setdefault("reset_trip", []).append(str(exc) or "Reset failed")
 

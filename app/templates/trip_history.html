@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}Trip History · Travel Expense Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="space-y-1">
+            <h1 class="text-xl font-semibold text-slate-100">Completed Trips</h1>
+            <p class="text-sm text-slate-400">Read-only summaries for archived trips, including spend totals and key
+                metrics.</p>
+        </div>
+        <a href="/ui/trips"
+            class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-blue-300 hover:text-blue-200 transition-colors">
+            ← Manage Trips
+        </a>
+    </div>
+
+    {% if history_totals.count > 0 %}
+    <section class="bg-slate-800/60 border border-slate-700/70 rounded-lg p-5 grid sm:grid-cols-3 gap-4">
+        <div>
+            <div class="text-[11px] uppercase tracking-wide text-slate-400">Archived Trips</div>
+            <div class="text-2xl font-semibold text-slate-100">{{ history_totals.count }}</div>
+        </div>
+        <div>
+            <div class="text-[11px] uppercase tracking-wide text-slate-400">Total Expenses Logged</div>
+            <div class="text-2xl font-semibold text-slate-100">{{ history_totals.total_expenses }}</div>
+        </div>
+        <div>
+            <div class="text-[11px] uppercase tracking-wide text-slate-400">Total Spend (₹)</div>
+            <div class="text-2xl font-semibold text-slate-100">₹ {{ history_totals.total_spent_display }}</div>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if histories %}
+    <div class="space-y-6">
+        {% for trip in histories %}
+        <article class="bg-slate-900/50 border border-slate-700/70 rounded-xl shadow-lg shadow-slate-950/30 p-6 space-y-4">
+            <header class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 class="text-lg font-semibold text-slate-100">{{ trip.name }}</h2>
+                    <div class="text-xs text-slate-400">Updated {{ trip.updated_display }} · Created {{
+                        trip.created_display }}</div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <span
+                        class="px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-slate-700 text-slate-200">
+                        {{ trip.status }}
+                    </span>
+                    <a href="{{ trip.export_url }}"
+                        class="text-[11px] font-semibold uppercase tracking-wide text-blue-300 hover:text-blue-200"
+                        title="View trip JSON via API">API JSON</a>
+                </div>
+            </header>
+
+            <div class="grid sm:grid-cols-4 gap-4 text-sm text-slate-200">
+                <div>
+                    <div class="text-[11px] uppercase tracking-wide text-slate-400">Start</div>
+                    <div>{{ trip.start_display }}</div>
+                </div>
+                <div>
+                    <div class="text-[11px] uppercase tracking-wide text-slate-400">End</div>
+                    <div>{{ trip.end_display }}</div>
+                </div>
+                <div>
+                    <div class="text-[11px] uppercase tracking-wide text-slate-400">Duration</div>
+                    <div>
+                        {% if trip.duration_days %}
+                        {{ trip.duration_days }} day{% if trip.duration_days != 1 %}s{% endif %}
+                        {% else %}
+                        Not available
+                        {% endif %}
+                    </div>
+                </div>
+                <div>
+                    <div class="text-[11px] uppercase tracking-wide text-slate-400">Expenses Logged</div>
+                    <div>{{ trip.expense_count }}</div>
+                </div>
+            </div>
+
+            <div class="grid sm:grid-cols-3 gap-4 text-sm">
+                <div class="bg-slate-800/60 border border-slate-700/70 rounded-lg p-4 space-y-1">
+                    <div class="text-[11px] uppercase tracking-wide text-slate-400">Total Spend (₹)</div>
+                    <div class="text-lg font-semibold text-slate-100">₹ {{ trip.total_spent_display }}</div>
+                </div>
+                <div class="bg-slate-800/60 border border-slate-700/70 rounded-lg p-4 space-y-1">
+                    <div class="text-[11px] uppercase tracking-wide text-slate-400">Budgets (Max)</div>
+                    <div class="text-lg font-semibold text-slate-100">₹ {{ trip.budget_total_max_display }}</div>
+                    <div class="text-[11px] text-slate-400">Spent ₹ {{ trip.budget_total_spent_display }}</div>
+                </div>
+                <div class="bg-slate-800/60 border border-slate-700/70 rounded-lg p-4 space-y-1">
+                    <div class="text-[11px] uppercase tracking-wide text-slate-400">Budgets Remaining</div>
+                    <div class="text-lg font-semibold text-slate-100">₹ {{ trip.budget_remaining_display }}</div>
+                </div>
+            </div>
+
+            <div>
+                <h3 class="text-[11px] uppercase tracking-wide text-slate-400 font-semibold mb-2">Top Currencies</h3>
+                {% if trip.top_currencies %}
+                <ul class="grid sm:grid-cols-3 gap-3 text-xs text-slate-200">
+                    {% for item in trip.top_currencies %}
+                    <li class="bg-slate-800/40 border border-slate-700/70 rounded-md px-3 py-2 space-y-1">
+                        <div class="text-sm font-semibold text-slate-100">{{ item.currency }}</div>
+                        <div>₹ {{ '%.2f'|format(item.inr_total) }}</div>
+                        <div class="text-[10px] text-slate-400">{{ item.percent_inr }}% of INR spend</div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-[11px] text-slate-500">No spend recorded for this trip.</p>
+                {% endif %}
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm text-slate-400">No trips have been archived yet. Archive a trip from the management page to see
+        historical summaries here.</p>
+    {% endif %}
+</div>
+{% endblock %}

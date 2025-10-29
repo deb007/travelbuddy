@@ -3,8 +3,15 @@
 {% block title %}Alerts · Travel Expense Tracker{% endblock %}
 
 {% block content %}
+{% set trip = active_trip %}
 <h1 class="text-xl font-semibold mb-1">Alerts</h1>
-<p class="text-slate-400 text-sm mb-6">Active budget and forex notifications.</p>
+<p class="text-slate-400 text-sm mb-6">
+    {% if trip %}
+    Active budget and forex notifications for <span class="text-slate-200 font-semibold">{{ trip.name }}</span>.
+    {% else %}
+    Active budget and forex notifications.
+    {% endif %}
+</p>
 
 {% include 'partials/_alerts.html' %}
 
