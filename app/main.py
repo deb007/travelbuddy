@@ -6,7 +6,17 @@ from .core.config import get_settings, Settings
 from .core.logging import init_logging, request_context_middleware
 from .db.migrate import apply_migrations
 from .core import errors
-from .routers import health, budgets, expenses, timeline, forex, rates, analytics, ui
+from .routers import (
+    health,
+    budgets,
+    expenses,
+    timeline,
+    forex,
+    rates,
+    analytics,
+    trips,
+    ui,
+)
 
 
 def create_app(settings_override: Settings | None = None) -> FastAPI:
@@ -43,6 +53,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     # Routers
     app.include_router(health.router)
+    app.include_router(trips.router)
     app.include_router(budgets.router)
     app.include_router(expenses.router)
     app.include_router(timeline.router)

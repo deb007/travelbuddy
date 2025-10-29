@@ -4,8 +4,47 @@
 {% block title %}Dashboard · Travel Expense Tracker{% endblock %}
 
 {% block content %}
-<h1 class="text-xl font-semibold mb-1">Dashboard</h1>
-<p class="text-slate-400 text-sm mb-6">Snapshot of trip finances.</p>
+{% set trip = active_trip %}
+<div class="flex flex-wrap items-start justify-between gap-4 mb-6">
+    <div class="space-y-1">
+        <h1 class="text-xl font-semibold">Dashboard</h1>
+        <p class="text-slate-400 text-sm">
+            {% if trip %}
+            Snapshot for <span class="text-slate-200 font-semibold">{{ trip.name }}</span>
+            {% else %}
+            Snapshot of trip finances.
+            {% endif %}
+        </p>
+    </div>
+    {% if trip %}
+    <div
+        class="bg-slate-800/80 border border-slate-700/70 rounded-lg px-4 py-3 text-xs sm:text-sm text-slate-200 shadow-sm min-w-[240px]">
+        <div class="flex items-center gap-2">
+            <span class="text-[11px] uppercase tracking-wide text-slate-400">Status</span>
+            <span
+                class="px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide {{ 'bg-emerald-600/70 text-emerald-100' if trip.status == 'active' else 'bg-slate-600/80 text-slate-100' }}">{{ trip.status }}</span>
+        </div>
+        <div class="mt-2 grid grid-cols-2 gap-3 text-[11px] sm:text-xs">
+            <div>
+                <div class="uppercase tracking-wide text-slate-400">Start</div>
+                <div class="text-slate-100">{{ trip.start_date or 'Not set' }}</div>
+            </div>
+            <div>
+                <div class="uppercase tracking-wide text-slate-400">End</div>
+                <div class="text-slate-100">{{ trip.end_date or 'Not set' }}</div>
+            </div>
+            <div>
+                <div class="uppercase tracking-wide text-slate-400">Expenses</div>
+                <div class="text-slate-100">₹ {{ '%.2f'|format(avg.total_inr) }}</div>
+            </div>
+            <div>
+                <div class="uppercase tracking-wide text-slate-400">Budgets Tracked</div>
+                <div class="text-slate-100">{{ budgets|length }}</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
 
 {% include 'partials/_alerts.html' %}
 
@@ -13,16 +52,28 @@
     <div
         class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60 hover:border-slate-600/60 transition-colors">
         <h2 class="text-[0.8rem] font-semibold uppercase tracking-wide text-slate-300 mb-2">Average Daily Spend</h2>
-        <div class="text-2xl font-semibold">₹ {{ avg.average_daily_spend }}</div>
-        <div class="text-[11px] text-slate-400 mt-1">Total: ₹ {{ avg.total_inr }} over {{ avg.days_elapsed }} day(s)
+        <div class="text-2xl font-semibold">₹ {{ '%.2f'|format(avg.average_daily_spend) }}</div>
+        <div class="text-[11px] text-slate-400 mt-1">
+            {% if avg.days_elapsed > 0 %}
+            Total: ₹ {{ '%.2f'|format(avg.total_inr) }} over {{ avg.days_elapsed }} day{{ '' if avg.days_elapsed == 1 else 's' }}
+            {% else %}
+            No spend recorded yet for this trip.
+            {% endif %}
         </div>
     </div>
     <div
         class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60 hover:border-slate-600/60 transition-colors">
         <h2 class="text-[0.8rem] font-semibold uppercase tracking-wide text-slate-300 mb-2">Remaining Daily Budget</h2>
-        <div class="text-2xl font-semibold">₹ {{ remaining.remaining_daily_budget }}</div>
-        <div class="text-[11px] text-slate-400 mt-1">Remaining: ₹ {{ remaining.remaining_inr }} across {{
-            remaining.days_left }} day(s)</div>
+        <div class="text-2xl font-semibold">₹ {{ '%.2f'|format(remaining.remaining_daily_budget) }}</div>
+        <div class="text-[11px] text-slate-400 mt-1">
+            {% if remaining.days_left > 0 and remaining.remaining_inr > 0 %}
+            Remaining: ₹ {{ '%.2f'|format(remaining.remaining_inr) }} across {{ remaining.days_left }} day{{ '' if remaining.days_left == 1 else 's' }}
+            {% elif remaining.days_left <= 0 %}
+            Trip end date has passed. Remaining budget calculated as ₹ {{ '%.2f'|format(remaining.remaining_inr) }}.
+            {% else %}
+            No INR budget configured for this trip.
+            {% endif %}
+        </div>
     </div>
     <div
         class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60 hover:border-slate-600/60 transition-colors">
@@ -39,12 +90,12 @@
     {% if budgets %}
     <div>
         {% for b in budgets %}
-        {{ c.progress_bar(b.percent_used, b.currency ~ ' • ₹' ~ b.spent_amount ~ ' / ' ~ b.max_amount, warn=b.eighty and
+        {{ c.progress_bar(b.percent_used, b.currency ~ ' • ₹' ~ '%.2f'|format(b.spent_amount) ~ ' / ' ~ '%.2f'|format(b.max_amount), warn=b.eighty and
         not b.ninety, danger=b.ninety) }}
         {% endfor %}
     </div>
     {% else %}
-    <p class="text-xs text-slate-500">No budgets configured yet.</p>
+    <p class="text-xs text-slate-500">No budgets configured for this trip.</p>
     {% endif %}
 </section>
 
@@ -65,7 +116,7 @@
                     {% for item in currency_breakdown %}
                     <tr class="odd:bg-slate-800/40 hover:bg-slate-700/40 transition-colors">
                         <td class="py-1 pr-2">{{ item.currency }}</td>
-                        <td class="text-right py-1 pr-2">₹ {{ item.inr_total }}</td>
+                        <td class="text-right py-1 pr-2">₹ {{ '%.2f'|format(item.inr_total) }}</td>
                         <td class="text-right py-1 pr-2">{{ item.percent_inr }}%</td>
                     </tr>
                     {% endfor %}
@@ -73,7 +124,7 @@
             </table>
         </div>
         {% else %}
-        <p class="text-[11px] text-slate-500">No spend yet.</p>
+        <p class="text-[11px] text-slate-500">No spend recorded yet for this trip.</p>
         {% endif %}
     </div>
     <div class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60">
@@ -92,7 +143,7 @@
                     {% for item in category_breakdown %}
                     <tr class="odd:bg-slate-800/40 hover:bg-slate-700/40 transition-colors">
                         <td class="py-1 pr-2">{{ item.category }}</td>
-                        <td class="text-right py-1 pr-2">₹ {{ item.inr_total }}</td>
+                        <td class="text-right py-1 pr-2">₹ {{ '%.2f'|format(item.inr_total) }}</td>
                         <td class="text-right py-1 pr-2">{{ item.percent }}%</td>
                     </tr>
                     {% endfor %}
@@ -100,7 +151,7 @@
             </table>
         </div>
         {% else %}
-        <p class="text-[11px] text-slate-500">No spend yet.</p>
+        <p class="text-[11px] text-slate-500">No spend recorded yet for this trip.</p>
         {% endif %}
     </div>
 </section>

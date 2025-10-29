@@ -45,16 +45,21 @@ def budget_status(
     return status
 
 
-def get_budget_status(db: Database, currency: str) -> Optional[Dict[str, Any]]:
-    row = db.get_budget(currency)
+def get_budget_status(
+    db: Database, currency: str, trip_id: Optional[int] = None
+) -> Optional[Dict[str, Any]]:
+    row = db.get_budget(currency, trip_id=trip_id)
     if not row:
         return None
     th = get_thresholds(db)
     return budget_status(row, th.budget_warn, th.budget_danger)
 
 
-def list_budget_statuses(db: Database) -> List[Dict[str, Any]]:
+def list_budget_statuses(
+    db: Database, trip_id: Optional[int] = None
+) -> List[Dict[str, Any]]:
     th = get_thresholds(db)
     return [
-        budget_status(r, th.budget_warn, th.budget_danger) for r in db.list_budgets()
+        budget_status(r, th.budget_warn, th.budget_danger)
+        for r in db.list_budgets(trip_id=trip_id)
     ]

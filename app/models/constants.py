@@ -7,7 +7,7 @@ from typing import Set
 
 CURRENCIES: Set[str] = {"INR", "SGD", "MYR"}
 FOREX_CURRENCIES: Set[str] = {"SGD", "MYR"}
-PAYMENT_METHODS: Set[str] = {"cash", "forex", "card"}
+PAYMENT_METHODS: Set[str] = {"cash", "forex", "card", "bank"}
 CATEGORIES: Set[str] = {
     # Core spending
     "food",

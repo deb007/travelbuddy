@@ -10,6 +10,7 @@ from .expense import ExpenseIn, ExpenseOut
 from .budget import Budget
 from .forex import ForexCard
 from .rates import RateRecord
+from .trip import TripCreate, TripUpdate, TripOut
 
 __all__ = [
     "CURRENCIES",
@@ -21,4 +22,7 @@ __all__ = [
     "Budget",
     "ForexCard",
     "RateRecord",
+    "TripCreate",
+    "TripUpdate",
+    "TripOut",
 ]

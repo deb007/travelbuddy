@@ -2,16 +2,29 @@
 {% block title %}Expenses · TravelBuddy{% endblock %}
 
 {% block content %}
+{% set trip = active_trip %}
 <div class="flex items-center justify-between mb-4 gap-4 flex-wrap">
     <div>
         <h1 class="text-xl font-semibold mb-1">Expenses</h1>
-        <p class="text-slate-400 text-sm">Recent expenses grouped by date (newest first).</p>
+        <p class="text-slate-400 text-sm">
+            {% if trip %}
+            Recent expenses grouped by date for <span class="text-slate-200 font-semibold">{{ trip.name }}</span>.
+            {% else %}
+            Recent expenses grouped by date (newest first).
+            {% endif %}
+        </p>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 flex-wrap justify-end">
         <a href="/ui/expenses/new"
             class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm px-4 py-2 rounded-md shadow-sm transition-colors">+
             New Expense</a>
-        <a href="/ui" class="text-slate-400 text-xs hover:text-white">← Dashboard</a>
+        <a href="/ui" class="text-slate-400 text-xs hover:text-white">Back to Dashboard</a>
+        {% if trip %}
+        <span
+            class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide border border-slate-700 text-slate-200">
+            Status: {{ trip.status }}
+        </span>
+        {% endif %}
     </div>
 </div>
 
@@ -21,7 +34,7 @@
     <section>
         <h2 class="text-sm font-semibold tracking-wide text-slate-300 mb-3 flex items-center gap-2">
             <span>{{ group.date }}</span>
-            <span class="text-[10px] font-normal text-slate-500">₹ {{ group.day_total_inr }} INR</span>
+            <span class="text-[10px] font-normal text-slate-500">₹ {{ '%.2f'|format(group.day_total_inr) }} INR</span>
         </h2>
         <div class="hidden sm:block sm:overflow-x-visible overflow-x-auto">
             <table class="w-full text-xs min-w-[760px] border-separate border-spacing-y-1">
@@ -94,8 +107,14 @@
     {% endfor %}
 </div>
 {% else %}
-<p class="text-sm text-slate-500">No expenses logged yet. <a href="/ui/expenses/new"
-        class="text-blue-400 hover:text-blue-300">Create your first one</a>.</p>
+<p class="text-sm text-slate-500">
+    {% if trip %}
+    No expenses logged yet for this trip.
+    {% else %}
+    No expenses logged yet.
+    {% endif %}
+    <a href="/ui/expenses/new" class="text-blue-400 hover:text-blue-300">Create your first one</a>.
+</p>
 {% endif %}
 
 {% endblock %}
