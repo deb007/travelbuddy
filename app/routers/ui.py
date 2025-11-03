@@ -780,6 +780,82 @@ async def ui_forex(request: Request, db: Database = Depends(get_db)):
         "cards": cards,
         "low_cards": low_cards,
         "alerts_count": len(alerts),
+        "forex_currencies": FOREX_CURRENCIES,
+        "form": {},
+        "messages": {},
+        "errors": {},
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("forex.html", context)
+
+
+@router.post("/ui/forex", response_class=HTMLResponse)
+async def ui_forex_submit(request: Request, db: Database = Depends(get_db)):
+    """Handle forex card load form submissions."""
+    clear_trip_context()
+    phase = compute_phase(db)
+    settings = get_settings()
+    trip_id = get_active_trip_id(db)
+    form_data = await request.form()
+    messages: dict[str, str] = {}
+    errors: dict[str, list[str]] = {}
+
+    currency = (form_data.get("currency") or "").upper().strip()
+    loaded_amount_str = (form_data.get("loaded_amount") or "").strip()
+
+    # Validate inputs
+    if currency not in FOREX_CURRENCIES:
+        errors.setdefault("forex_form", []).append(
+            f"Invalid currency. Must be one of: {', '.join(FOREX_CURRENCIES)}"
+        )
+
+    if not loaded_amount_str:
+        errors.setdefault("forex_form", []).append("Loaded amount is required")
+    else:
+        try:
+            loaded_amount = float(loaded_amount_str)
+            if loaded_amount <= 0:
+                errors.setdefault("forex_form", []).append(
+                    "Loaded amount must be greater than 0"
+                )
+        except ValueError:
+            errors.setdefault("forex_form", []).append("Invalid loaded amount format")
+            loaded_amount = None
+
+    # If validation passes, update the forex card
+    if not errors and currency and loaded_amount:
+        try:
+            db.set_forex_card_loaded(currency, loaded_amount, trip_id=trip_id)
+            messages["forex_success"] = (
+                f"{currency} card loaded with {loaded_amount:.2f}"
+            )
+        except ValueError as e:
+            errors.setdefault("forex_form", []).append(str(e))
+        except Exception as e:
+            errors.setdefault("forex_form", []).append(
+                f"Failed to update forex card: {str(e)}"
+            )
+
+    # Re-fetch cards to display updated data
+    rows = db.list_forex_cards(trip_id=trip_id)
+    thresholds = get_thresholds(db)
+    cards = list_forex_status(rows, forex_low_pct=thresholds.forex_low)
+    low_cards = [c for c in cards if c["low_balance"]]
+    alerts = collect_alerts(db, trip_id=trip_id)
+
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "cards": cards,
+        "low_cards": low_cards,
+        "alerts_count": len(alerts),
+        "forex_currencies": FOREX_CURRENCIES,
+        "form": {"currency": currency, "loaded_amount": loaded_amount_str}
+        if errors
+        else {},
+        "messages": messages,
+        "errors": errors,
     }
     context.update(_trip_nav_context(db, trip_id=trip_id))
     return templates.TemplateResponse("forex.html", context)

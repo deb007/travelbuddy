@@ -41,7 +41,9 @@ RUN addgroup --system appgroup \
     && adduser --system --ingroup appgroup --home ${APP_HOME} appuser \
     && chown -R appuser:appgroup ${APP_HOME}
 
-USER appuser
+# Run as root to allow writing to bind-mounted volumes
+# In production, use proper volume permissions or run with --user flag
+# USER appuser
 
 EXPOSE 8000
 
