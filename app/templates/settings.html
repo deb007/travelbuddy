@@ -12,7 +12,8 @@
             </p>
         </div>
         {% if trip %}
-        <div class="bg-slate-800/80 border border-slate-700/70 rounded-lg px-4 py-3 shadow-sm text-xs sm:text-sm text-slate-200 min-w-[240px] space-y-2">
+        <div
+            class="bg-slate-800/80 border border-slate-700/70 rounded-lg px-4 py-3 shadow-sm text-xs sm:text-sm text-slate-200 min-w-[240px] space-y-2">
             <div class="flex items-center gap-2">
                 <span class="text-[11px] uppercase tracking-wide text-slate-400">Active Trip</span>
                 <span
@@ -38,326 +39,408 @@
     <section class="space-y-6" aria-labelledby="trip-settings-heading">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h2 id="trip-settings-heading" class="text-sm font-semibold uppercase tracking-wide text-slate-300">Trip Settings</h2>
+                <h2 id="trip-settings-heading" class="text-sm font-semibold uppercase tracking-wide text-slate-300">Trip
+                    Settings</h2>
                 <p class="text-xs text-slate-400 mt-1">Applies only to the currently selected trip shown above.</p>
             </div>
         </div>
         <div class="space-y-6">
 
-    <!-- Trip Dates Section -->
-    <section id="trip-dates" class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
-        <div class="flex items-center justify-between gap-3">
-            <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">Trip Dates</h3>
-            {% if trip %}
-            <span class="text-[11px] text-slate-400 uppercase tracking-wide">Active trip: {{ trip.name }}</span>
-            {% endif %}
-        </div>
-        {% set td = trip_dates %}
-        <form method="post" class="grid sm:grid-cols-3 gap-4 items-end">
-            <input type="hidden" name="section" value="trip_dates" />
-            <input type="hidden" name="trip_id" value="{{ active_trip_id }}" />
-            <label class="block text-xs font-semibold tracking-wide text-slate-300">Start Date
-                <input type="date" name="start_date" value="{{ td.start_date if td else '' }}"
-                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    required />
-            </label>
-            <label class="block text-xs font-semibold tracking-wide text-slate-300">End Date
-                <input type="date" name="end_date" value="{{ td.end_date if td else '' }}"
-                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    required />
-            </label>
-            <div>
-                <button
-                    class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
-                    Trip Dates</button>
-            </div>
-        </form>
-        <p class="text-[11px] text-slate-500">Adjust the travel window for the active trip. Switch trips from the top navigation to edit another itinerary.</p>
-        {% if errors.trip_dates %}
-        <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.trip_dates %}<li>{{ e }}</li>{% endfor %}</ul>
-        {% endif %}
-        {% if messages.trip_dates %}
-        <div class="text-xs text-green-400">{{ messages.trip_dates[0] }}</div>
-        {% endif %}
-    </section>
-
-    <!-- Forex Loads Section -->
-    <section id="forex-loads" class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
-        <div class="flex items-center justify-between gap-3">
-            <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">Forex Card Loads</h3>
-            {% if trip %}
-            <span class="text-[11px] text-slate-400 uppercase tracking-wide">Trip: {{ trip.name }}</span>
-            {% endif %}
-        </div>
-        <form method="post" class="grid sm:grid-cols-{{ (forex_rows|length) + 1 }} gap-4 items-end">
-            <input type="hidden" name="section" value="forex_loads" />
-            <input type="hidden" name="trip_id" value="{{ active_trip_id }}" />
-            {% for cur, r in forex_rows.items() %}
-            <label class="block text-xs font-semibold tracking-wide text-slate-300">{{ cur }} Loaded
-                <input type="number" step="0.01" min="0" name="loaded_{{ cur }}" value="{{ r.loaded_amount }}"
-                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </label>
-            {% endfor %}
-            <div>
-                <button
-                    class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
-                    Forex Loads</button>
-            </div>
-        </form>
-        <p class="text-[11px] text-slate-400">Update loaded balances for forex cards tied to this trip. Leave a field empty to keep its current amount.</p>
-        {% if errors.forex_loads %}
-        <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.forex_loads %}<li>{{ e }}</li>{% endfor %}</ul>
-        {% endif %}
-        {% if messages.forex_loads %}
-        <div class="text-xs text-green-400">{{ messages.forex_loads[0] }}</div>
-        {% endif %}
-    </section>
-
-    <!-- Danger: Reset Trip Section -->
-    <section id="reset-trip" class="bg-red-900/40 border border-red-700/60 rounded-lg p-5 space-y-4">
-        <div class="flex items-center justify-between gap-3">
-            <h3 class="font-medium text-red-200 text-sm uppercase tracking-wide">Reset Trip Data</h3>
-            {% if trip %}
-            <span class="text-[11px] text-red-200 uppercase tracking-wide">{{ trip.name }}</span>
-            {% endif %}
-        </div>
-        <p class="text-xs text-red-300 leading-relaxed">This permanently deletes all expenses, budgets, forex card data,
-            cached rates, and trip dates for the active trip. Optionally preserve configuration settings (thresholds, UI preferences,
-            provider overrides). This cannot be undone.</p>
-        <form method="post" class="space-y-4">
-            <input type="hidden" name="section" value="reset_trip" />
-            <input type="hidden" name="trip_id" value="{{ active_trip_id }}" />
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
-                <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-red-200">
-                    <input type="checkbox" name="confirm_reset" class="accent-red-600" /> I understand - delete all trip
-                    data
-                </label>
-                <label class="text-xs font-semibold tracking-wide text-red-200">Type <span
-                        class="font-mono bg-red-800/60 px-1 rounded">reset</span>
-                    <input type="text" name="confirm_token" placeholder="reset"
-                        class="ml-2 w-28 bg-red-950/60 border border-red-700 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-red-500" />
-                </label>
-                <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-red-200">
-                    <input type="checkbox" name="preserve_settings" checked class="accent-red-600" /> Preserve
-                    configuration & UI settings
-                </label>
-                <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-red-200">
-                    <input type="checkbox" name="wipe_all" class="accent-red-600" /> Wipe all trips (creates a new default trip)
-                </label>
-                <button
-                    class="inline-flex items-center gap-1 bg-red-700 hover:bg-red-600 text-white text-xs font-semibold px-4 py-2 rounded shadow">Reset
-                    Trip</button>
-            </div>
-        </form>
-        <p class="text-[11px] text-red-300">To wipe the entire workspace, enable "Wipe all trips". This removes every trip and creates a fresh default trip while optionally preserving global settings.</p>
-        {% if errors.reset_trip %}
-        <ul class="text-xs text-red-300 space-y-0.5">{% for e in errors.reset_trip %}<li>{{ e }}</li>{% endfor %}</ul>
-        {% endif %}
-        {% if messages.reset_trip %}
-        <div class="text-xs text-green-300">{{ messages.reset_trip[0] }}</div>
-        {% endif %}
-    </section>
-    <section class="space-y-6" aria-labelledby="global-settings-heading">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-            <div>
-                <h2 id="global-settings-heading" class="text-sm font-semibold uppercase tracking-wide text-slate-300">Global Settings</h2>
-                <p class="text-xs text-slate-400 mt-1">These preferences apply across every trip in TravelBuddy.</p>
-            </div>
-        </div>
-        <div class="space-y-6">
-
-    <!-- Rate Provider / Cache Section -->
-    <section id="rate-settings" class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
-        <div class="flex items-center justify-between">
-            <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">Rate Provider & Cache</h3>
-        </div>
-        <p class="text-[11px] text-slate-400">Global setting – used across all trips when converting or caching rates.</p>
-        <form method="post" class="grid sm:grid-cols-4 gap-4 items-end">
-            <input type="hidden" name="section" value="rate_settings" />
-            <label class="block text-xs font-semibold tracking-wide text-slate-300">Provider
-                <select name="rate_provider"
-                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
-                    {% for opt in ['static','external-placeholder','external-http'] %}
-                    <option value="{{ opt }}" {% if opt==rate_provider %}selected{% endif %}>{{ opt }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label class="block text-xs font-semibold tracking-wide text-slate-300">Cache TTL (seconds)
-                <input type="number" min="60" max="86400" name="rates_cache_ttl" value="{{ rate_ttl }}"
-                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </label>
-            <div class="sm:col-span-1">
-                <button
-                    class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
-                    Rate Settings</button>
-            </div>
-        </form>
-        {% if errors.rate_settings %}
-        <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.rate_settings %}<li>{{ e }}</li>{% endfor %}
-        </ul>
-        {% endif %}
-        {% if messages.rate_settings %}
-        <div class="text-xs text-green-400">{{ messages.rate_settings[0] }}</div>
-        {% endif %}
-    </section>
-
-    <!-- Budget Settings Section -->
-    <section id="budget-settings" class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
-        <div class="flex items-center justify-between">
-            <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">Budget Settings</h3>
-        </div>
-        <p class="text-[11px] text-slate-400">Defines default behaviours for every trip (enforce cap, auto-create, and template amounts).</p>
-        <form method="post" class="space-y-4">
-            <input type="hidden" name="section" value="budget_settings" />
-            <div class="grid sm:grid-cols-4 gap-4">
-                <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
-                    <input type="checkbox" name="budget_enforce_cap" {% if budget_flags.enforce_cap %}checked{% endif %}
-                        class="accent-blue-600" /> Enforce Cap
-                </label>
-                <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
-                    <input type="checkbox" name="budget_auto_create" {% if budget_flags.auto_create %}checked{% endif %}
-                        class="accent-blue-600" /> Auto-Create Budgets
-                </label>
-            </div>
-            <div class="grid sm:grid-cols-{{ budget_flags.defaults|length + 2 }} gap-4 items-end">
-                {% for cur, amt in budget_flags.defaults.items() %}
-                <label class="block text-xs font-semibold tracking-wide text-slate-300">Default {{ cur }}
-                    <input type="number" step="0.01" min="0" name="default_budget_{{ cur }}" value="{{ amt }}"
-                        class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                </label>
-                {% endfor %}
-                <!-- Provide inputs for base currencies if absent -->
-                {% for cur in ['INR','SGD','MYR'] %}
-                {% if cur not in budget_flags.defaults %}
-                <label class="block text-xs font-semibold tracking-wide text-slate-300">Default {{ cur }}
-                    <input type="number" step="0.01" min="0" name="default_budget_{{ cur }}" value="" placeholder="0"
-                        class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                </label>
-                {% endif %}
-                {% endfor %}
-                <div>
-                    <button
-                        class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
-                        Budget Settings</button>
+            <!-- Trip Dates Section -->
+            <section id="trip-dates" class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
+                <div class="flex items-center justify-between gap-3">
+                    <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">Trip Dates</h3>
+                    {% if trip %}
+                    <span class="text-[11px] text-slate-400 uppercase tracking-wide">Active trip: {{ trip.name }}</span>
+                    {% endif %}
                 </div>
-            </div>
-        </form>
-        <p class="text-[11px] text-slate-400">If enforce cap is on, new/edited expenses that exceed the configured max
-            budget are rejected. Auto-create creates a zero or default-max budget row if missing.</p>
-        {% if errors.budget_settings %}
-        <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.budget_settings %}<li>{{ e }}</li>{% endfor %}
-        </ul>
-        {% endif %}
-        {% if messages.budget_settings %}
-        <div class="text-xs text-green-400">{{ messages.budget_settings[0] }}</div>
-        {% endif %}
-    </section>
+                {% set td = trip_dates %}
+                <form method="post" class="grid sm:grid-cols-3 gap-4 items-end">
+                    <input type="hidden" name="section" value="trip_dates" />
+                    <input type="hidden" name="trip_id" value="{{ active_trip_id }}" />
+                    <label class="block text-xs font-semibold tracking-wide text-slate-300">Start Date
+                        <input type="date" name="start_date" value="{{ td.start_date if td else '' }}"
+                            class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            required />
+                    </label>
+                    <label class="block text-xs font-semibold tracking-wide text-slate-300">End Date
+                        <input type="date" name="end_date" value="{{ td.end_date if td else '' }}"
+                            class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            required />
+                    </label>
+                    <div>
+                        <button
+                            class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
+                            Trip Dates</button>
+                    </div>
+                </form>
+                <p class="text-[11px] text-slate-500">Adjust the travel window for the active trip. Switch trips from
+                    the top navigation to edit another itinerary.</p>
+                {% if errors.trip_dates %}
+                <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.trip_dates %}<li>{{ e }}</li>{% endfor
+                    %}</ul>
+                {% endif %}
+                {% if messages.trip_dates %}
+                <div class="text-xs text-green-400">{{ messages.trip_dates[0] }}</div>
+                {% endif %}
+            </section>
 
-    <!-- UI Preferences Section -->
-    <section id="ui-preferences" class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
-        <div class="flex items-center justify-between">
-            <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">UI Preferences</h3>
+            <!-- Forex Loads Section -->
+            <section id="forex-loads" class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
+                <div class="flex items-center justify-between gap-3">
+                    <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">Forex Card Loads</h3>
+                    {% if trip %}
+                    <span class="text-[11px] text-slate-400 uppercase tracking-wide">Trip: {{ trip.name }}</span>
+                    {% endif %}
+                </div>
+                <form method="post" class="grid sm:grid-cols-{{ (forex_rows|length) + 1 }} gap-4 items-end">
+                    <input type="hidden" name="section" value="forex_loads" />
+                    <input type="hidden" name="trip_id" value="{{ active_trip_id }}" />
+                    {% for cur, r in forex_rows.items() %}
+                    <label class="block text-xs font-semibold tracking-wide text-slate-300">{{ cur }} Loaded
+                        <input type="number" step="0.01" min="0" name="loaded_{{ cur }}" value="{{ r.loaded_amount }}"
+                            class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    </label>
+                    {% endfor %}
+                    <div>
+                        <button
+                            class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
+                            Forex Loads</button>
+                    </div>
+                </form>
+                <p class="text-[11px] text-slate-400">Update loaded balances for forex cards tied to this trip. Leave a
+                    field empty to keep its current amount.</p>
+                {% if errors.forex_loads %}
+                <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.forex_loads %}<li>{{ e }}</li>{% endfor
+                    %}</ul>
+                {% endif %}
+                {% if messages.forex_loads %}
+                <div class="text-xs text-green-400">{{ messages.forex_loads[0] }}</div>
+                {% endif %}
+            </section>
+
+            <!-- Danger: Reset Trip Section -->
+            <section id="reset-trip" class="bg-red-900/40 border border-red-700/60 rounded-lg p-5 space-y-4">
+                <div class="flex items-center justify-between gap-3">
+                    <h3 class="font-medium text-red-200 text-sm uppercase tracking-wide">Reset Trip Data</h3>
+                    {% if trip %}
+                    <span class="text-[11px] text-red-200 uppercase tracking-wide">{{ trip.name }}</span>
+                    {% endif %}
+                </div>
+                <p class="text-xs text-red-300 leading-relaxed">This permanently deletes all expenses, budgets, forex
+                    card data,
+                    cached rates, and trip dates for the active trip. Optionally preserve configuration settings
+                    (thresholds, UI preferences,
+                    provider overrides). This cannot be undone.</p>
+                <form method="post" class="space-y-4">
+                    <input type="hidden" name="section" value="reset_trip" />
+                    <input type="hidden" name="trip_id" value="{{ active_trip_id }}" />
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+                        <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-red-200">
+                            <input type="checkbox" name="confirm_reset" class="accent-red-600" /> I understand - delete
+                            all trip
+                            data
+                        </label>
+                        <label class="text-xs font-semibold tracking-wide text-red-200">Type <span
+                                class="font-mono bg-red-800/60 px-1 rounded">reset</span>
+                            <input type="text" name="confirm_token" placeholder="reset"
+                                class="ml-2 w-28 bg-red-950/60 border border-red-700 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-red-500" />
+                        </label>
+                        <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-red-200">
+                            <input type="checkbox" name="preserve_settings" checked class="accent-red-600" /> Preserve
+                            configuration & UI settings
+                        </label>
+                        <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-red-200">
+                            <input type="checkbox" name="wipe_all" class="accent-red-600" /> Wipe all trips (creates a
+                            new default trip)
+                        </label>
+                        <button
+                            class="inline-flex items-center gap-1 bg-red-700 hover:bg-red-600 text-white text-xs font-semibold px-4 py-2 rounded shadow">Reset
+                            Trip</button>
+                    </div>
+                </form>
+                <p class="text-[11px] text-red-300">To wipe the entire workspace, enable "Wipe all trips". This removes
+                    every trip and creates a fresh default trip while optionally preserving global settings.</p>
+                {% if errors.reset_trip %}
+                <ul class="text-xs text-red-300 space-y-0.5">{% for e in errors.reset_trip %}<li>{{ e }}</li>{% endfor
+                    %}</ul>
+                {% endif %}
+                {% if messages.reset_trip %}
+                <div class="text-xs text-green-300">{{ messages.reset_trip[0] }}</div>
+                {% endif %}
+            </section>
+            <section class="space-y-6" aria-labelledby="global-settings-heading">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h2 id="global-settings-heading"
+                            class="text-sm font-semibold uppercase tracking-wide text-slate-300">Global Settings</h2>
+                        <p class="text-xs text-slate-400 mt-1">These preferences apply across every trip in TravelBuddy.
+                        </p>
+                    </div>
+                </div>
+                <div class="space-y-6">
+
+                    <!-- Default Currencies Section -->
+                    <section id="default-currencies"
+                        class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">Default Currencies
+                            </h3>
+                        </div>
+                        <p class="text-[11px] text-slate-400">Set the default currencies that will be assigned to new
+                            trips. Existing trips retain their configured currencies.</p>
+                        <form method="post" class="grid sm:grid-cols-2 gap-4 items-end">
+                            <input type="hidden" name="section" value="default_currencies" />
+                            <label class="block text-xs font-semibold tracking-wide text-slate-300">Currencies
+                                (comma-separated)
+                                <input type="text" name="currencies" value="{{ default_currencies|join(', ') }}"
+                                    placeholder="e.g., INR, SGD, MYR"
+                                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    required />
+                                <span class="text-[10px] text-slate-500 mt-1 block">Enter currency codes separated by
+                                    commas. E.g., "INR, USD, EUR"</span>
+                            </label>
+                            <div>
+                                <button
+                                    class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
+                                    Default Currencies</button>
+                            </div>
+                        </form>
+                        <p class="text-[11px] text-slate-400">These currencies will be used when creating new trips. You
+                            can override currencies for individual trips via the Trips page.</p>
+                        {% if errors.default_currencies %}
+                        <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.default_currencies %}<li>{{ e }}
+                            </li>{% endfor %}</ul>
+                        {% endif %}
+                        {% if messages.default_currencies %}
+                        <div class="text-xs text-green-400">{{ messages.default_currencies[0] }}</div>
+                        {% endif %}
+                    </section>
+
+                    <!-- Rate Provider / Cache Section -->
+                    <section id="rate-settings"
+                        class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">Rate Provider & Cache
+                            </h3>
+                        </div>
+                        <p class="text-[11px] text-slate-400">Global setting – used across all trips when converting or
+                            caching rates.</p>
+                        <form method="post" class="grid sm:grid-cols-4 gap-4 items-end">
+                            <input type="hidden" name="section" value="rate_settings" />
+                            <label class="block text-xs font-semibold tracking-wide text-slate-300">Provider
+                                <select name="rate_provider"
+                                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                    {% for opt in ['static','external-placeholder','external-http'] %}
+                                    <option value="{{ opt }}" {% if opt==rate_provider %}selected{% endif %}>{{ opt }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label class="block text-xs font-semibold tracking-wide text-slate-300">Cache TTL (seconds)
+                                <input type="number" min="60" max="86400" name="rates_cache_ttl" value="{{ rate_ttl }}"
+                                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                            </label>
+                            <div class="sm:col-span-1">
+                                <button
+                                    class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
+                                    Rate Settings</button>
+                            </div>
+                        </form>
+                        {% if errors.rate_settings %}
+                        <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.rate_settings %}<li>{{ e }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                        {% if messages.rate_settings %}
+                        <div class="text-xs text-green-400">{{ messages.rate_settings[0] }}</div>
+                        {% endif %}
+                    </section>
+
+                    <!-- Budget Settings Section -->
+                    <section id="budget-settings"
+                        class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">Budget Settings</h3>
+                        </div>
+                        <p class="text-[11px] text-slate-400">Defines default behaviours for every trip (enforce cap,
+                            auto-create, and template amounts).</p>
+                        <form method="post" class="space-y-4">
+                            <input type="hidden" name="section" value="budget_settings" />
+                            <div class="grid sm:grid-cols-4 gap-4">
+                                <label
+                                    class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
+                                    <input type="checkbox" name="budget_enforce_cap" {% if budget_flags.enforce_cap
+                                        %}checked{% endif %} class="accent-blue-600" /> Enforce Cap
+                                </label>
+                                <label
+                                    class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
+                                    <input type="checkbox" name="budget_auto_create" {% if budget_flags.auto_create
+                                        %}checked{% endif %} class="accent-blue-600" /> Auto-Create Budgets
+                                </label>
+                            </div>
+                            <div class="grid sm:grid-cols-{{ budget_flags.defaults|length + 2 }} gap-4 items-end">
+                                {% for cur, amt in budget_flags.defaults.items() %}
+                                <label class="block text-xs font-semibold tracking-wide text-slate-300">Default {{ cur
+                                    }}
+                                    <input type="number" step="0.01" min="0" name="default_budget_{{ cur }}"
+                                        value="{{ amt }}"
+                                        class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                                </label>
+                                {% endfor %}
+                                <!-- Provide inputs for base currencies if absent -->
+                                {% for cur in ['INR','SGD','MYR'] %}
+                                {% if cur not in budget_flags.defaults %}
+                                <label class="block text-xs font-semibold tracking-wide text-slate-300">Default {{ cur
+                                    }}
+                                    <input type="number" step="0.01" min="0" name="default_budget_{{ cur }}" value=""
+                                        placeholder="0"
+                                        class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                                </label>
+                                {% endif %}
+                                {% endfor %}
+                                <div>
+                                    <button
+                                        class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
+                                        Budget Settings</button>
+                                </div>
+                            </div>
+                        </form>
+                        <p class="text-[11px] text-slate-400">If enforce cap is on, new/edited expenses that exceed the
+                            configured max
+                            budget are rejected. Auto-create creates a zero or default-max budget row if missing.</p>
+                        {% if errors.budget_settings %}
+                        <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.budget_settings %}<li>{{ e }}
+                            </li>{% endfor %}
+                        </ul>
+                        {% endif %}
+                        {% if messages.budget_settings %}
+                        <div class="text-xs text-green-400">{{ messages.budget_settings[0] }}</div>
+                        {% endif %}
+                    </section>
+
+                    <!-- UI Preferences Section -->
+                    <section id="ui-preferences"
+                        class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">UI Preferences</h3>
+                        </div>
+                        <p class="text-[11px] text-slate-400">Global interface defaults shared by all trips (theme,
+                            layout, dashboard widgets).</p>
+                        <form method="post" class="space-y-4">
+                            <input type="hidden" name="section" value="ui_preferences" />
+                            <div class="grid sm:grid-cols-4 gap-4">
+                                <label class="block text-xs font-semibold tracking-wide text-slate-300">Theme
+                                    <select name="ui_theme"
+                                        class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                        {% for opt in ['auto','light','dark'] %}
+                                        <option value="{{ opt }}" {% if opt==ui_prefs.theme %}selected{% endif %}>{{ opt
+                                            }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <label class="block text-xs font-semibold tracking-wide text-slate-300">Expense Layout
+                                    <select name="ui_expense_layout"
+                                        class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                        {% for opt in ['detailed','compact'] %}
+                                        <option value="{{ opt }}" {% if opt==ui_prefs.expense_layout %}selected{% endif
+                                            %}>{{ opt }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <label
+                                    class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300 mt-6">
+                                    <input type="checkbox" name="ui_show_day_totals" {% if ui_prefs.show_day_totals
+                                        %}checked{% endif %} class="accent-blue-600" /> Show Day Totals
+                                </label>
+                            </div>
+                            <div class="grid sm:grid-cols-4 gap-4">
+                                <label
+                                    class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
+                                    <input type="checkbox" name="widget_budgets" {% if ui_prefs.widgets.budgets
+                                        %}checked{% endif %} class="accent-blue-600" /> Budgets Widget
+                                </label>
+                                <label
+                                    class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
+                                    <input type="checkbox" name="widget_rates" {% if ui_prefs.widgets.rates %}checked{%
+                                        endif %} class="accent-blue-600" /> Rates Widget
+                                </label>
+                                <label
+                                    class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
+                                    <input type="checkbox" name="widget_categories" {% if ui_prefs.widgets.categories
+                                        %}checked{% endif %} class="accent-blue-600" /> Categories Widget
+                                </label>
+                                <label
+                                    class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
+                                    <input type="checkbox" name="widget_currencies" {% if ui_prefs.widgets.currencies
+                                        %}checked{% endif %} class="accent-blue-600" /> Currencies Widget
+                                </label>
+                            </div>
+                            <div>
+                                <button
+                                    class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
+                                    UI Preferences</button>
+                            </div>
+                        </form>
+                        {% if errors.ui_preferences %}
+                        <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.ui_preferences %}<li>{{ e }}
+                            </li>{% endfor %}
+                        </ul>
+                        {% endif %}
+                        {% if messages.ui_preferences %}
+                        <div class="text-xs text-green-400">{{ messages.ui_preferences[0] }}</div>
+                        {% endif %}
+                    </section>
+
+                    <!-- Thresholds Section -->
+                    <section id="thresholds"
+                        class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">Alert Thresholds</h3>
+                        </div>
+                        <p class="text-[11px] text-slate-400">Shared alert thresholds influence dashboards and
+                            notifications for every trip.</p>
+                        <form method="post" class="grid sm:grid-cols-4 gap-4 items-end">
+                            <input type="hidden" name="section" value="thresholds" />
+                            <label class="block text-xs font-semibold tracking-wide text-slate-300">Budget Warn (%)
+                                <input type="number" min="1" max="99" name="budget_warn"
+                                    value="{{ thresholds.budget_warn }}"
+                                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    required />
+                            </label>
+                            <label class="block text-xs font-semibold tracking-wide text-slate-300">Budget Danger (%)
+                                <input type="number" min="2" max="100" name="budget_danger"
+                                    value="{{ thresholds.budget_danger }}"
+                                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    required />
+                            </label>
+                            <label class="block text-xs font-semibold tracking-wide text-slate-300">Forex Low Balance
+                                (%)
+                                <input type="number" min="1" max="99" name="forex_low"
+                                    value="{{ thresholds.forex_low }}"
+                                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    required />
+                            </label>
+                            <div>
+                                <button
+                                    class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
+                                    Thresholds</button>
+                            </div>
+                        </form>
+                        <p class="text-[11px] text-slate-400">Warn &lt; Danger. Forex triggers when remaining percentage
+                            is strictly
+                            below configured value.</p>
+                        {% if errors.thresholds %}
+                        <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.thresholds %}<li>{{ e }}</li>{%
+                            endfor %}</ul>
+                        {% endif %}
+                        {% if messages.thresholds %}
+                        <div class="text-xs text-green-400">{{ messages.thresholds[0] }}</div>
+                        {% endif %}
+                    </section>
+                </div>
+            </section>
+
         </div>
-        <p class="text-[11px] text-slate-400">Global interface defaults shared by all trips (theme, layout, dashboard widgets).</p>
-        <form method="post" class="space-y-4">
-            <input type="hidden" name="section" value="ui_preferences" />
-            <div class="grid sm:grid-cols-4 gap-4">
-                <label class="block text-xs font-semibold tracking-wide text-slate-300">Theme
-                    <select name="ui_theme"
-                        class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
-                        {% for opt in ['auto','light','dark'] %}
-                        <option value="{{ opt }}" {% if opt==ui_prefs.theme %}selected{% endif %}>{{ opt }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label class="block text-xs font-semibold tracking-wide text-slate-300">Expense Layout
-                    <select name="ui_expense_layout"
-                        class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
-                        {% for opt in ['detailed','compact'] %}
-                        <option value="{{ opt }}" {% if opt==ui_prefs.expense_layout %}selected{% endif %}>{{ opt }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300 mt-6">
-                    <input type="checkbox" name="ui_show_day_totals" {% if ui_prefs.show_day_totals %}checked{% endif %}
-                        class="accent-blue-600" /> Show Day Totals
-                </label>
-            </div>
-            <div class="grid sm:grid-cols-4 gap-4">
-                <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
-                    <input type="checkbox" name="widget_budgets" {% if ui_prefs.widgets.budgets %}checked{% endif %}
-                        class="accent-blue-600" /> Budgets Widget
-                </label>
-                <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
-                    <input type="checkbox" name="widget_rates" {% if ui_prefs.widgets.rates %}checked{% endif %}
-                        class="accent-blue-600" /> Rates Widget
-                </label>
-                <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
-                    <input type="checkbox" name="widget_categories" {% if ui_prefs.widgets.categories %}checked{% endif
-                        %} class="accent-blue-600" /> Categories Widget
-                </label>
-                <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
-                    <input type="checkbox" name="widget_currencies" {% if ui_prefs.widgets.currencies %}checked{% endif
-                        %} class="accent-blue-600" /> Currencies Widget
-                </label>
-            </div>
-            <div>
-                <button
-                    class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
-                    UI Preferences</button>
-            </div>
-        </form>
-        {% if errors.ui_preferences %}
-        <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.ui_preferences %}<li>{{ e }}</li>{% endfor %}
-        </ul>
-        {% endif %}
-        {% if messages.ui_preferences %}
-        <div class="text-xs text-green-400">{{ messages.ui_preferences[0] }}</div>
-        {% endif %}
-    </section>
-
-    <!-- Thresholds Section -->
-    <section id="thresholds" class="bg-slate-800/60 rounded-lg border border-slate-700/70 p-5 space-y-4">
-        <div class="flex items-center justify-between">
-            <h3 class="font-medium text-slate-200 text-sm uppercase tracking-wide">Alert Thresholds</h3>
-        </div>
-        <p class="text-[11px] text-slate-400">Shared alert thresholds influence dashboards and notifications for every trip.</p>
-        <form method="post" class="grid sm:grid-cols-4 gap-4 items-end">
-            <input type="hidden" name="section" value="thresholds" />
-            <label class="block text-xs font-semibold tracking-wide text-slate-300">Budget Warn (%)
-                <input type="number" min="1" max="99" name="budget_warn" value="{{ thresholds.budget_warn }}"
-                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    required />
-            </label>
-            <label class="block text-xs font-semibold tracking-wide text-slate-300">Budget Danger (%)
-                <input type="number" min="2" max="100" name="budget_danger" value="{{ thresholds.budget_danger }}"
-                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    required />
-            </label>
-            <label class="block text-xs font-semibold tracking-wide text-slate-300">Forex Low Balance (%)
-                <input type="number" min="1" max="99" name="forex_low" value="{{ thresholds.forex_low }}"
-                    class="mt-1 w-full bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    required />
-            </label>
-            <div>
-                <button
-                    class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow">Save
-                    Thresholds</button>
-            </div>
-        </form>
-        <p class="text-[11px] text-slate-400">Warn &lt; Danger. Forex triggers when remaining percentage is strictly
-            below configured value.</p>
-        {% if errors.thresholds %}
-        <ul class="text-xs text-red-400 space-y-0.5">{% for e in errors.thresholds %}<li>{{ e }}</li>{% endfor %}</ul>
-        {% endif %}
-        {% if messages.thresholds %}
-        <div class="text-xs text-green-400">{{ messages.thresholds[0] }}</div>
-        {% endif %}
-    </section>
-        </div>
-    </section>
-
-</div>
-{% endblock %}
-
+        {% endblock %}

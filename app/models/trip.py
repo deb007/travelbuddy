@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 
 from pydantic import BaseModel, root_validator, validator
 
@@ -10,6 +10,7 @@ class TripBase(BaseModel):
     name: str
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    currencies: Optional[List[str]] = None
 
     @validator("name")
     def _name_not_blank(cls, value: str) -> str:
@@ -24,6 +25,24 @@ class TripBase(BaseModel):
             raise ValueError("end_date cannot be before start_date")
         return end
 
+    @validator("currencies")
+    def _valid_currencies(cls, currencies: Optional[List[str]]) -> Optional[List[str]]:
+        if currencies is not None:
+            if len(currencies) == 0:
+                raise ValueError("currencies list cannot be empty")
+            # Remove duplicates while preserving order
+            seen = set()
+            unique = []
+            for cur in currencies:
+                cur_upper = cur.upper().strip()
+                if cur_upper and cur_upper not in seen:
+                    seen.add(cur_upper)
+                    unique.append(cur_upper)
+            if len(unique) == 0:
+                raise ValueError("currencies list cannot be empty")
+            return unique
+        return currencies
+
 
 class TripCreate(TripBase):
     status: Literal["active", "archived"] = "active"
@@ -35,10 +54,14 @@ class TripUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     status: Optional[Literal["active", "archived"]] = None
+    currencies: Optional[List[str]] = None
 
     @root_validator
     def _at_least_one(cls, values: dict) -> dict:
-        if not any(values.get(field) is not None for field in ("name", "start_date", "end_date", "status")):
+        if not any(
+            values.get(field) is not None
+            for field in ("name", "start_date", "end_date", "status", "currencies")
+        ):
             raise ValueError("at least one field must be provided")
         return values
 
@@ -55,10 +78,29 @@ class TripUpdate(BaseModel):
             raise ValueError("end_date cannot be before start_date")
         return end
 
+    @validator("currencies")
+    def _valid_currencies(cls, currencies: Optional[List[str]]) -> Optional[List[str]]:
+        if currencies is not None:
+            if len(currencies) == 0:
+                raise ValueError("currencies list cannot be empty")
+            # Remove duplicates while preserving order
+            seen = set()
+            unique = []
+            for cur in currencies:
+                cur_upper = cur.upper().strip()
+                if cur_upper and cur_upper not in seen:
+                    seen.add(cur_upper)
+                    unique.append(cur_upper)
+            if len(unique) == 0:
+                raise ValueError("currencies list cannot be empty")
+            return unique
+        return currencies
+
 
 class TripOut(TripBase):
     id: int
     status: Literal["active", "archived"]
+    currencies: List[str]
     created_at: datetime
     updated_at: datetime
 

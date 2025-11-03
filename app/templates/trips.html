@@ -4,27 +4,28 @@
 {% block content %}
 <div class="space-y-8">
     <div class="flex flex-wrap items-start justify-between gap-4">
-    <div class="space-y-1">
-        <h1 class="text-xl font-semibold tracking-wide text-slate-100">Trip Management</h1>
-        <p class="text-sm text-slate-400">Create trips, adjust metadata, and drive which trip powers the dashboards.</p>
-    </div>
-    <div class="flex flex-col sm:items-end gap-3">
-        {% if summary %}
-        <div
-            class="bg-slate-800/70 border border-slate-700/70 rounded-lg px-4 py-3 text-xs sm:text-sm text-slate-200 space-y-1">
-            <div class="text-[11px] uppercase tracking-wide text-slate-400">Overview</div>
-            <div><span class="text-slate-400">Total trips:</span> {{ summary.total }}</div>
-            <div><span class="text-slate-400">Active:</span> {{ summary.active }}</div>
-            <div><span class="text-slate-400">Archived:</span> {{ summary.archived }}</div>
-            <div><span class="text-slate-400">Lifetime INR spend:</span> ₹ {{ summary.total_spend_label }}</div>
+        <div class="space-y-1">
+            <h1 class="text-xl font-semibold tracking-wide text-slate-100">Trip Management</h1>
+            <p class="text-sm text-slate-400">Create trips, adjust metadata, and drive which trip powers the dashboards.
+            </p>
         </div>
-        {% endif %}
-        <a href="/ui/trips/history"
-            class="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-blue-300 hover:text-blue-200 transition-colors">
-            View Archived Summaries →
-        </a>
+        <div class="flex flex-col sm:items-end gap-3">
+            {% if summary %}
+            <div
+                class="bg-slate-800/70 border border-slate-700/70 rounded-lg px-4 py-3 text-xs sm:text-sm text-slate-200 space-y-1">
+                <div class="text-[11px] uppercase tracking-wide text-slate-400">Overview</div>
+                <div><span class="text-slate-400">Total trips:</span> {{ summary.total }}</div>
+                <div><span class="text-slate-400">Active:</span> {{ summary.active }}</div>
+                <div><span class="text-slate-400">Archived:</span> {{ summary.archived }}</div>
+                <div><span class="text-slate-400">Lifetime INR spend:</span> ₹ {{ summary.total_spend_label }}</div>
+            </div>
+            {% endif %}
+            <a href="/ui/trips/history"
+                class="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-blue-300 hover:text-blue-200 transition-colors">
+                View Archived Summaries →
+            </a>
+        </div>
     </div>
-</div>
 
     {% if errors.general %}
     <div class="bg-red-900/40 border border-red-700/60 text-red-200 text-sm rounded-lg px-4 py-3">
@@ -80,6 +81,15 @@
                         class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
                 </label>
             </div>
+            <div class="sm:col-span-2 lg:col-span-4">
+                <label class="block text-xs font-semibold tracking-wide text-slate-300">Currencies
+                    <input type="text" name="currencies" value="{{ create_form.currencies }}"
+                        class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="e.g. INR, SGD, MYR (comma-separated, leave blank to use global defaults)" />
+                    <p class="mt-1 text-xs text-slate-400">Specify currencies for this trip. Leave blank to use global
+                        default currencies.</p>
+                </label>
+            </div>
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
                     <input type="checkbox" name="make_active" class="accent-blue-500" {% if create_form.make_active %}
@@ -98,7 +108,8 @@
     <section class="bg-blue-900/20 border border-blue-700/40 rounded-lg p-5 space-y-3">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <h2 class="text-sm font-semibold uppercase tracking-wide text-blue-200">Active Trip</h2>
-            <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-blue-600/70 text-white">In
+            <span
+                class="px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-blue-600/70 text-white">In
                 use</span>
         </div>
         <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
@@ -141,7 +152,8 @@
         <div class="flex items-center justify-between gap-3">
             <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-300">Trip History</h2>
             {% if trips %}
-            <span class="text-xs text-slate-400">{{ trips|length }} trip{% if trips|length != 1 %}s{% endif %} total</span>
+            <span class="text-xs text-slate-400">{{ trips|length }} trip{% if trips|length != 1 %}s{% endif %}
+                total</span>
             {% endif %}
         </div>
         {% if trips %}
@@ -175,7 +187,8 @@
                         <div><span class="text-slate-400">Start:</span> {{ trip.start_display }}</div>
                         <div><span class="text-slate-400">End:</span> {{ trip.end_display }}</div>
                         {% if trip.duration_days %}
-                        <div><span class="text-slate-400">Duration:</span> {{ trip.duration_days }} day{% if trip.duration_days != 1 %}s{% endif %}
+                        <div><span class="text-slate-400">Duration:</span> {{ trip.duration_days }} day{% if
+                            trip.duration_days != 1 %}s{% endif %}
                         </div>
                         {% endif %}
                         <div><span class="text-slate-400">INR Spend:</span> ₹ {{ trip.spent_display }}</div>
@@ -211,8 +224,8 @@
                 </div>
                 {% endif %}
 
-                <details class="bg-slate-900/40 border border-slate-700/60 rounded-lg p-4 text-sm"
-                    {% if focus_trip_id == trip.id %}open{% endif %}>
+                <details class="bg-slate-900/40 border border-slate-700/60 rounded-lg p-4 text-sm" {% if
+                    focus_trip_id==trip.id %}open{% endif %}>
                     <summary
                         class="cursor-pointer text-xs uppercase tracking-wide text-slate-300 font-semibold flex items-center gap-2">
                         Edit trip details
@@ -243,6 +256,15 @@
                                 class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
                         </label>
                         <div class="sm:col-span-2 lg:col-span-4">
+                            <label class="block text-xs font-semibold tracking-wide text-slate-300">Currencies
+                                <input type="text" name="currencies" value="{{ trip.form.currencies }}"
+                                    class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    placeholder="e.g. INR, SGD, MYR (comma-separated, leave blank to use global defaults)" />
+                                <p class="mt-1 text-xs text-slate-400">Specify currencies for this trip. Leave blank to
+                                    use global default currencies.</p>
+                            </label>
+                        </div>
+                        <div class="sm:col-span-2 lg:col-span-4">
                             <button
                                 class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow transition-colors">
                                 Save Changes
@@ -257,14 +279,15 @@
                         <input type="hidden" name="trip_id" value="{{ trip.id }}" />
                         <button
                             class="px-3 py-2 text-xs font-semibold rounded bg-blue-600 hover:bg-blue-500 text-white disabled:bg-slate-600 disabled:text-slate-300 transition-colors"
-                            {% if trip.is_active %}disabled title="Already active"{% endif %}>Set Active</button>
+                            {% if trip.is_active %}disabled title="Already active" {% endif %}>Set Active</button>
                     </form>
                     <form method="post" action="/ui/trips" class="inline">
                         <input type="hidden" name="section" value="archive" />
                         <input type="hidden" name="trip_id" value="{{ trip.id }}" />
                         <button
                             class="px-3 py-2 text-xs font-semibold rounded bg-slate-700 hover:bg-slate-600 text-slate-100 disabled:bg-slate-800 disabled:text-slate-500 transition-colors"
-                            {% if trip.status == 'archived' %}disabled title="Already archived"{% endif %}>Archive</button>
+                            {% if trip.status=='archived' %}disabled title="Already archived" {% endif
+                            %}>Archive</button>
                     </form>
                     <form method="post" action="/ui/trips" class="inline"
                         onsubmit="return confirm('Reset all data for {{ trip.name }}? This removes expenses, budgets, and forex records.');">

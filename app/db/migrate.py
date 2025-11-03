@@ -8,14 +8,16 @@ SQLite schema in-place while preserving user data.
 from __future__ import annotations
 from pathlib import Path
 import sqlite3
+import json
 from typing import Optional
 
 from . import schema as schema_def
 from .schema import init_db
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 SCHEMA_VERSION_KEY = "schema_version"
 LEGACY_TRIP_META_KEYS = ("trip_start_date", "trip_end_date")
+DEFAULT_CURRENCIES = ["INR", "SGD", "MYR"]
 
 
 def _get_schema_version(conn: sqlite3.Connection) -> Optional[int]:
@@ -40,6 +42,9 @@ def apply_migrations(db_path: Path) -> int:
         if version < 2:
             _migrate_to_v2(conn)
             version = 2
+        if version < 3:
+            _migrate_to_v3(conn)
+            version = 3
         _set_schema_version(conn, version)
         conn.commit()
         return version
@@ -237,3 +242,35 @@ def _table_exists(cur: sqlite3.Cursor, name: str) -> bool:
 def _column_exists(cur: sqlite3.Cursor, table: str, column: str) -> bool:
     cur.execute(f"PRAGMA table_info({table})")
     return any(row[1] == column for row in cur.fetchall())
+
+
+def _migrate_to_v3(conn: sqlite3.Connection) -> None:
+    """Upgrade schema to version 3 (per-trip currencies and global defaults)."""
+    cur = conn.cursor()
+    try:
+        # Add currencies column to trips table if it doesn't exist
+        if not _column_exists(cur, "trips", "currencies"):
+            cur.execute("ALTER TABLE trips ADD COLUMN currencies TEXT")
+
+            # Set default currencies for all existing trips
+            default_currencies_json = json.dumps(DEFAULT_CURRENCIES)
+            cur.execute(
+                f"UPDATE trips SET currencies = ?, updated_at = ({schema_def.BASIC_UTC_NOW}) WHERE currencies IS NULL",
+                (default_currencies_json,),
+            )
+
+        # Add global default_currencies setting if not exists
+        cur.execute("SELECT value FROM metadata WHERE key = 'default_currencies'")
+        if not cur.fetchone():
+            cur.execute(
+                f"""
+                INSERT INTO metadata (key, value, updated_at)
+                VALUES ('default_currencies', ?, ({schema_def.BASIC_UTC_NOW}))
+                """,
+                (json.dumps(DEFAULT_CURRENCIES),),
+            )
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Optional
+import json
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 
@@ -31,12 +31,23 @@ def _row_to_trip(row: dict) -> TripOut:
     end_raw = row.get("end_date")
     created_raw = row.get("created_at")
     updated_raw = row.get("updated_at")
+    currencies_raw = row.get("currencies")
+
+    # Parse currencies from JSON
+    try:
+        currencies = (
+            json.loads(currencies_raw) if currencies_raw else ["INR", "SGD", "MYR"]
+        )
+    except (json.JSONDecodeError, TypeError):
+        currencies = ["INR", "SGD", "MYR"]
+
     return TripOut(
         id=int(row["id"]),
         name=row["name"],
         start_date=date.fromisoformat(start_raw) if start_raw else None,
         end_date=date.fromisoformat(end_raw) if end_raw else None,
         status=row["status"],
+        currencies=currencies,
         created_at=datetime.fromisoformat(created_raw.replace("Z", ""))
         if isinstance(created_raw, str)
         else created_raw,
@@ -58,7 +69,10 @@ async def list_trips(
 
 
 @router.post(
-    "/", response_model=TripOut, status_code=status.HTTP_201_CREATED, summary="Create trip"
+    "/",
+    response_model=TripOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create trip",
 )
 async def create_trip(payload: TripCreate, db: Database = Depends(get_db)):
     if payload.make_active and payload.status == "archived":
@@ -72,6 +86,7 @@ async def create_trip(payload: TripCreate, db: Database = Depends(get_db)):
             end_date=payload.end_date,
             status=payload.status,
             make_active=payload.make_active,
+            currencies=payload.currencies,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -100,7 +115,9 @@ async def get_trip(trip_id: int, db: Database = Depends(get_db)):
     response_model=TripOut,
     summary="Update trip metadata",
 )
-async def update_trip(trip_id: int, payload: TripUpdate, db: Database = Depends(get_db)):
+async def update_trip(
+    trip_id: int, payload: TripUpdate, db: Database = Depends(get_db)
+):
     updates: dict[str, object] = {}
     if payload.name is not None:
         updates["name"] = payload.name
@@ -110,6 +127,8 @@ async def update_trip(trip_id: int, payload: TripUpdate, db: Database = Depends(
         updates["end_date"] = payload.end_date
     if payload.status is not None:
         updates["status"] = payload.status
+    if payload.currencies is not None:
+        updates["currencies"] = payload.currencies
     try:
         db.update_trip(trip_id, **updates)
     except ValueError as exc:
@@ -204,7 +223,9 @@ async def reset_all_trips(
             wipe_all=True,
         )
     except Exception as exc:  # pragma: no cover - defensive
-        raise HTTPException(status_code=500, detail="failed to reset all trips") from exc
+        raise HTTPException(
+            status_code=500, detail="failed to reset all trips"
+        ) from exc
     clear_trip_context()
     row = db.get_active_trip()
     if not row:
