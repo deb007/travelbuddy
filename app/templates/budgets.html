@@ -17,7 +17,8 @@
         </p>
     </div>
     {% if trip %}
-    <div class="bg-slate-800/80 border border-slate-700/70 rounded-lg px-4 py-3 text-xs sm:text-sm text-slate-200 shadow-sm min-w-[220px]">
+    <div
+        class="bg-slate-800/80 border border-slate-700/70 rounded-lg px-4 py-3 text-xs sm:text-sm text-slate-200 shadow-sm min-w-[220px]">
         <div class="uppercase tracking-wide text-[11px] text-slate-400">Trip Window</div>
         <div class="mt-1 text-slate-100">{{ trip.start_date or 'Not set' }} -> {{ trip.end_date or 'Not set' }}</div>
         <div class="mt-3 uppercase tracking-wide text-[11px] text-slate-400">Budgets</div>
@@ -37,23 +38,54 @@
             danger_budgets|length }}</div>
     </div>
     {% else %}
-    <p class="text-[11px] text-slate-500">No budgets set yet for this trip. Use the API or automation to configure caps.</p>
+    <p class="text-[11px] text-slate-500">No budgets set yet for this trip. Use the API or automation to configure caps.
+    </p>
+    {% endif %}
+
+    {% if messages.get('update') or messages.get('create') or errors.get('update') or errors.get('create') or
+    errors.get('general') %}
+    <div class="mt-4 space-y-2">
+        {% for msg in messages.get('update', []) %}<div class="text-[11px] text-emerald-400">✔ {{ msg }}</div>{% endfor
+        %}
+        {% for msg in messages.get('create', []) %}<div class="text-[11px] text-emerald-400">＋ {{ msg }}</div>{% endfor
+        %}
+        {% for err in errors.get('update', []) %}<div class="text-[11px] text-red-400">⚠ {{ err }}</div>{% endfor %}
+        {% for err in errors.get('create', []) %}<div class="text-[11px] text-red-400">⚠ {{ err }}</div>{% endfor %}
+        {% for err in errors.get('general', []) %}<div class="text-[11px] text-red-400">⚠ {{ err }}</div>{% endfor %}
+    </div>
     {% endif %}
 </section>
 
 <section class="mb-10">
     <h2 class="text-[0.75rem] font-semibold uppercase tracking-wide text-slate-300 mb-3">Details</h2>
     {% if budgets %}
-    {% for b in budgets %}
-    {{ c.progress_bar(b.percent_used, b.currency ~ ' • ₹' ~ '%.2f'|format(b.spent_amount) ~ ' / ' ~ '%.2f'|format(b.max_amount), warn=b.eighty and not
-    b.ninety, danger=b.ninety) }}
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-slate-400 mb-5 pl-1">
-        <div><span class="text-slate-300">Remaining:</span> ₹ {{ '%.2f'|format(b.remaining) }}</div>
-        <div><span class="text-slate-300">Used:</span> {{ '%.2f' % b.percent_used }}%</div>
-        <div><span class="text-slate-300">80% Flag:</span> {{ 'Yes' if b.eighty else 'No' }}</div>
-        <div><span class="text-slate-300">90% Flag:</span> {{ 'Yes' if b.ninety else 'No' }}</div>
-    </div>
-    {% endfor %}
+    <form method="post" action="/ui/budgets" class="space-y-6">
+        <input type="hidden" name="section" value="update" />
+        <div class="grid gap-6">
+            {% for b in budgets %}
+            <div class="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
+                {{ c.progress_bar(b.percent_used, b.currency ~ ' • ₹' ~ '%.2f'|format(b.spent_amount) ~ ' / ' ~
+                '%.2f'|format(b.max_amount), warn=b.eighty and not b.ninety, danger=b.ninety) }}
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[10px] text-slate-400 mt-3">
+                    <div><span class="text-slate-300">Remaining:</span> ₹ {{ '%.2f'|format(b.remaining) }}</div>
+                    <div><span class="text-slate-300">Used:</span> {{ '%.2f' % b.percent_used }}%</div>
+                    <div><span class="text-slate-300">80% Flag:</span> {{ 'Yes' if b.eighty else 'No' }}</div>
+                    <div><span class="text-slate-300">90% Flag:</span> {{ 'Yes' if b.ninety else 'No' }}</div>
+                    <div>
+                        <label class="block text-slate-300 mb-1">Max Amount</label>
+                        <input name="max_{{ b.currency }}" value="{{ '%.2f'|format(b.max_amount) }}"
+                            class="w-full bg-slate-900/70 border border-slate-700/60 rounded px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:ring focus:ring-slate-600" />
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="pt-2">
+            <button type="submit"
+                class="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium px-3 py-1.5 rounded shadow-sm">Save
+                Changes</button>
+        </div>
+    </form>
     {% else %}
     <p class="text-[11px] text-slate-500">No budgets to show for this trip.</p>
     {% endif %}
@@ -66,6 +98,39 @@
         <li><span class="text-amber-400 font-medium">Amber bar</span>: >=80% and <90% usage.</li>
         <li><span class="text-red-400 font-medium">Red bar</span>: >=90% usage (critical).</li>
     </ul>
+</section>
+
+<section class="bg-slate-800/70 rounded-lg p-4 shadow-sm border border-slate-700/60 mt-8">
+    <h2 class="text-[0.75rem] font-semibold uppercase tracking-wide text-slate-300 mb-3">Add New Budget</h2>
+    {% if unused_currencies %}
+    <form method="post" action="/ui/budgets" class="flex flex-wrap items-end gap-3 text-[11px]">
+        <input type="hidden" name="section" value="create" />
+        <div>
+            <label class="block mb-1 text-slate-300">Currency</label>
+            <select name="new_currency"
+                class="bg-slate-900/70 border border-slate-700/60 rounded px-2 py-1 text-slate-200">
+                <option value="">-- select --</option>
+                {% for cur in unused_currencies %}
+                <option value="{{ cur }}">{{ cur }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block mb-1 text-slate-300">Max Amount</label>
+            <input name="new_max_amount" placeholder="e.g. 50000"
+                class="bg-slate-900/70 border border-slate-700/60 rounded px-2 py-1 text-slate-200" />
+        </div>
+        <div class="pt-5">
+            <button type="submit"
+                class="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-3 py-1.5 rounded shadow-sm">Add
+                Budget</button>
+        </div>
+    </form>
+    {% else %}
+    <p class="text-[11px] text-slate-500">All supported currencies already have budgets.</p>
+    {% endif %}
+    <p class="mt-4 text-[10px] text-slate-500">Note: Simple form submission without CSRF; add protection before
+        production hardening.</p>
 </section>
 
 {% endblock %}

@@ -248,12 +248,16 @@ def _build_trip_history_list(db: Database) -> List[Dict[str, Any]]:
         total_spent = round2(db.total_inr_spent(trip_id=tid))
         expense_count = db.count_expenses(trip_id=tid)
         budgets = db.list_budgets(trip_id=tid)
-        budget_total_max = round2(
-            sum(float(b.get("max_amount") or 0.0) for b in budgets)
-        ) if budgets else 0.0
-        budget_total_spent = round2(
-            sum(float(b.get("spent_amount") or 0.0) for b in budgets)
-        ) if budgets else 0.0
+        budget_total_max = (
+            round2(sum(float(b.get("max_amount") or 0.0) for b in budgets))
+            if budgets
+            else 0.0
+        )
+        budget_total_spent = (
+            round2(sum(float(b.get("spent_amount") or 0.0) for b in budgets))
+            if budgets
+            else 0.0
+        )
         budget_remaining = budget_total_max - budget_total_spent
         if budget_remaining < 0:
             budget_remaining = 0.0
@@ -392,9 +396,9 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
         try:
             trip_id = int(trip_id_raw)
         except (TypeError, ValueError):
-            errors.setdefault(
-                "general", []
-            ).append("Invalid trip identifier for update.")
+            errors.setdefault("general", []).append(
+                "Invalid trip identifier for update."
+            )
         else:
             focus_trip_id = trip_id
             key = f"trip_{trip_id}_update"
@@ -458,9 +462,9 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
         try:
             trip_id = int(trip_id_raw)
         except (TypeError, ValueError):
-            errors.setdefault(
-                "general", []
-            ).append("Invalid trip identifier for archive action.")
+            errors.setdefault("general", []).append(
+                "Invalid trip identifier for archive action."
+            )
         else:
             focus_trip_id = trip_id
             key = f"trip_{trip_id}_archive"
@@ -469,18 +473,16 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
                 clear_trip_context()
                 messages.setdefault(key, []).append("Trip archived")
             except ValueError as exc:
-                errors.setdefault(key, []).append(
-                    str(exc) or "Failed to archive trip"
-                )
+                errors.setdefault(key, []).append(str(exc) or "Failed to archive trip")
 
     elif section == "reset_trip_data":
         trip_id_raw = form.get("trip_id")
         try:
             trip_id = int(trip_id_raw)
         except (TypeError, ValueError):
-            errors.setdefault(
-                "general", []
-            ).append("Invalid trip identifier for reset action.")
+            errors.setdefault("general", []).append(
+                "Invalid trip identifier for reset action."
+            )
         else:
             focus_trip_id = trip_id
             key = f"trip_{trip_id}_reset"
@@ -510,9 +512,9 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
         try:
             trip_id = int(trip_id_raw)
         except (TypeError, ValueError):
-            errors.setdefault(
-                "general", []
-            ).append("Invalid trip identifier for activation.")
+            errors.setdefault("general", []).append(
+                "Invalid trip identifier for activation."
+            )
         else:
             focus_trip_id = trip_id
             key = f"trip_{trip_id}_activate"
@@ -551,8 +553,12 @@ async def ui_trips_history(request: Request, db: Database = Depends(get_db)):
     phase = compute_phase(db)
     settings = get_settings()
     histories = _build_trip_history_list(db)
-    total_spent = round2(sum(item["total_spent"] for item in histories)) if histories else 0.0
-    total_expenses = sum(item["expense_count"] for item in histories) if histories else 0
+    total_spent = (
+        round2(sum(item["total_spent"] for item in histories)) if histories else 0.0
+    )
+    total_expenses = (
+        sum(item["expense_count"] for item in histories) if histories else 0
+    )
     history_totals = {
         "count": len(histories),
         "total_spent": total_spent,
@@ -627,6 +633,8 @@ async def ui_budgets(request: Request, db: Database = Depends(get_db)):
     settings = get_settings()
     trip_id = get_active_trip_id(db)
     budgets = list_budget_statuses(db, trip_id=trip_id)
+    existing = {b["currency"] for b in budgets}
+    unused_currencies = [c for c in CURRENCIES if c not in existing]
 
     # Derive counts for thresholds (purely presentational)
     total = len(budgets)
@@ -643,6 +651,107 @@ async def ui_budgets(request: Request, db: Database = Depends(get_db)):
         "warn_budgets": warn_list,
         "danger_budgets": danger_list,
         "alerts_count": len(alerts),
+        "unused_currencies": unused_currencies,
+        "messages": {},
+        "errors": {},
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("budgets.html", context)
+
+
+@router.post("/ui/budgets", response_class=HTMLResponse)
+async def ui_budgets_submit(request: Request, db: Database = Depends(get_db)):
+    """Handle create/update budget form submissions.
+
+    Two sections supported via hidden 'section' field:
+    - section=update: expects multiple budget update rows (currency + max_amount)
+    - section=create: create a single new budget for a selected currency
+    """
+    clear_trip_context()
+    phase = compute_phase(db)
+    settings = get_settings()
+    trip_id = get_active_trip_id(db)
+    form = await request.form()
+    section = (form.get("section") or "").strip().lower()
+    messages: dict[str, list[str]] = {}
+    errors: dict[str, list[str]] = {}
+
+    def _add_err(key: str, msg: str):
+        errors.setdefault(key, []).append(msg)
+
+    def _add_msg(key: str, msg: str):
+        messages.setdefault(key, []).append(msg)
+
+    if section == "update":
+        # Iterate through submitted currencies; names follow pattern max_<CUR>
+        for key, value in form.items():
+            if not key.startswith("max_"):
+                continue
+            raw_currency = key[4:].upper().strip()
+            if raw_currency not in CURRENCIES:
+                _add_err("update", f"Unsupported currency '{raw_currency}'")
+                continue
+            raw_amount = (value or "").replace(",", "").strip()
+            if raw_amount == "":
+                _add_err("update", f"No amount provided for {raw_currency}")
+                continue
+            try:
+                amt = float(raw_amount)
+            except ValueError:
+                _add_err("update", f"Invalid number for {raw_currency}")
+                continue
+            if amt <= 0:
+                _add_err("update", f"Amount must be > 0 for {raw_currency}")
+                continue
+            try:
+                db.set_budget_max(raw_currency, amt, trip_id=trip_id)
+                _add_msg("update", f"Updated {raw_currency} budget")
+            except Exception as exc:  # broad catch, log could be added
+                _add_err("update", f"Failed to update {raw_currency}: {exc}")
+    elif section == "create":
+        new_currency = (form.get("new_currency") or "").upper().strip()
+        raw_amount = (form.get("new_max_amount") or "").replace(",", "").strip()
+        if new_currency not in CURRENCIES:
+            _add_err("create", "Select a valid currency")
+        elif raw_amount == "":
+            _add_err("create", "Provide a max amount")
+        else:
+            try:
+                amt = float(raw_amount)
+            except ValueError:
+                _add_err("create", "Invalid number for amount")
+            else:
+                if amt <= 0:
+                    _add_err("create", "Amount must be > 0")
+                else:
+                    try:
+                        db.set_budget_max(new_currency, amt, trip_id=trip_id)
+                        _add_msg("create", f"Added {new_currency} budget")
+                    except Exception as exc:
+                        _add_err("create", f"Failed to add budget: {exc}")
+    else:
+        _add_err("general", "Unrecognized action")
+
+    # Recompute budgets and context
+    budgets = list_budget_statuses(db, trip_id=trip_id)
+    existing = {b["currency"] for b in budgets}
+    unused_currencies = [c for c in CURRENCIES if c not in existing]
+    total = len(budgets)
+    warn_list = [b for b in budgets if b["eighty"] and not b["ninety"]]
+    danger_list = [b for b in budgets if b["ninety"]]
+    alerts = collect_alerts(db, trip_id=trip_id)
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "budgets": budgets,
+        "total_budgets": total,
+        "warn_budgets": warn_list,
+        "danger_budgets": danger_list,
+        "alerts_count": len(alerts),
+        "unused_currencies": unused_currencies,
+        "messages": messages,
+        "errors": errors,
     }
     context.update(_trip_nav_context(db, trip_id=trip_id))
     return templates.TemplateResponse("budgets.html", context)
@@ -694,7 +803,7 @@ async def ui_alerts(request: Request, db: Database = Depends(get_db)):
         "version": settings.version,
         "alerts": alerts,
         "alerts_count": len(alerts),
-        }
+    }
     context.update(_trip_nav_context(db, trip_id=trip_id))
     return templates.TemplateResponse("alerts.html", context)
 
@@ -1119,7 +1228,9 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
                 try:
                     target_trip_id = int(trip_id_raw)
                 except (TypeError, ValueError):
-                    errors.setdefault("reset_trip", []).append("Invalid trip identifier")
+                    errors.setdefault("reset_trip", []).append(
+                        "Invalid trip identifier"
+                    )
         if not confirm or token != "reset":
             errors.setdefault("reset_trip", []).append(
                 "Confirmation required: tick the box and type 'reset'"
