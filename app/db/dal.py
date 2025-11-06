@@ -520,16 +520,14 @@ class Database:
             raise ValueError("Trip not found")
         status = row["status"]
         if status == "archived":
-            # Promote archived trip back to active state
-            cur.execute(
-                f"UPDATE trips SET status = 'active', updated_at = ({UTC_NOW_SQL}) WHERE id = ?",
-                (trip_id,),
+            raise ValueError(
+                "Cannot activate an archived trip. Please unarchive it first."
             )
-        else:
-            cur.execute(
-                f"UPDATE trips SET updated_at = ({UTC_NOW_SQL}) WHERE id = ?",
-                (trip_id,),
-            )
+
+        cur.execute(
+            f"UPDATE trips SET updated_at = ({UTC_NOW_SQL}) WHERE id = ?",
+            (trip_id,),
+        )
         cur.execute(
             f"""
             INSERT INTO metadata (key, value)
@@ -540,6 +538,35 @@ class Database:
             """,
             (str(trip_id),),
         )
+
+    def unarchive_trip(self, trip_id: int, make_active: bool = False) -> None:
+        """Explicitly unarchive a trip and optionally make it active.
+
+        Args:
+            trip_id: The ID of the trip to unarchive
+            make_active: If True, also set this trip as the active trip
+
+        Raises:
+            ValueError: If trip not found or trip is not archived
+        """
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT status FROM trips WHERE id = ?", (trip_id,))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("Trip not found")
+            if row["status"] != "archived":
+                raise ValueError("Trip is not archived")
+
+            cur.execute(
+                f"UPDATE trips SET status = 'active', updated_at = ({UTC_NOW_SQL}) WHERE id = ?",
+                (trip_id,),
+            )
+
+            if make_active:
+                self._set_active_trip(cur, trip_id)
+
+            conn.commit()
 
     # ------------------------------------------------------------------
     # Expense CRUD

@@ -248,12 +248,16 @@ def _build_trip_history_list(db: Database) -> List[Dict[str, Any]]:
         total_spent = round2(db.total_inr_spent(trip_id=tid))
         expense_count = db.count_expenses(trip_id=tid)
         budgets = db.list_budgets(trip_id=tid)
-        budget_total_max = round2(
-            sum(float(b.get("max_amount") or 0.0) for b in budgets)
-        ) if budgets else 0.0
-        budget_total_spent = round2(
-            sum(float(b.get("spent_amount") or 0.0) for b in budgets)
-        ) if budgets else 0.0
+        budget_total_max = (
+            round2(sum(float(b.get("max_amount") or 0.0) for b in budgets))
+            if budgets
+            else 0.0
+        )
+        budget_total_spent = (
+            round2(sum(float(b.get("spent_amount") or 0.0) for b in budgets))
+            if budgets
+            else 0.0
+        )
         budget_remaining = budget_total_max - budget_total_spent
         if budget_remaining < 0:
             budget_remaining = 0.0
@@ -392,9 +396,9 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
         try:
             trip_id = int(trip_id_raw)
         except (TypeError, ValueError):
-            errors.setdefault(
-                "general", []
-            ).append("Invalid trip identifier for update.")
+            errors.setdefault("general", []).append(
+                "Invalid trip identifier for update."
+            )
         else:
             focus_trip_id = trip_id
             key = f"trip_{trip_id}_update"
@@ -458,9 +462,9 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
         try:
             trip_id = int(trip_id_raw)
         except (TypeError, ValueError):
-            errors.setdefault(
-                "general", []
-            ).append("Invalid trip identifier for archive action.")
+            errors.setdefault("general", []).append(
+                "Invalid trip identifier for archive action."
+            )
         else:
             focus_trip_id = trip_id
             key = f"trip_{trip_id}_archive"
@@ -469,8 +473,32 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
                 clear_trip_context()
                 messages.setdefault(key, []).append("Trip archived")
             except ValueError as exc:
+                errors.setdefault(key, []).append(str(exc) or "Failed to archive trip")
+
+    elif section == "unarchive":
+        trip_id_raw = form.get("trip_id")
+        make_active_flag = form.get("make_active") == "on"
+        try:
+            trip_id = int(trip_id_raw)
+        except (TypeError, ValueError):
+            errors.setdefault("general", []).append(
+                "Invalid trip identifier for unarchive action."
+            )
+        else:
+            focus_trip_id = trip_id
+            key = f"trip_{trip_id}_unarchive"
+            try:
+                db.unarchive_trip(trip_id, make_active=make_active_flag)
+                clear_trip_context()
+                if make_active_flag:
+                    messages.setdefault(key, []).append(
+                        "Trip unarchived and set as active"
+                    )
+                else:
+                    messages.setdefault(key, []).append("Trip unarchived")
+            except ValueError as exc:
                 errors.setdefault(key, []).append(
-                    str(exc) or "Failed to archive trip"
+                    str(exc) or "Failed to unarchive trip"
                 )
 
     elif section == "reset_trip_data":
@@ -478,16 +506,19 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
         try:
             trip_id = int(trip_id_raw)
         except (TypeError, ValueError):
-            errors.setdefault(
-                "general", []
-            ).append("Invalid trip identifier for reset action.")
+            errors.setdefault("general", []).append(
+                "Invalid trip identifier for reset action."
+            )
         else:
             focus_trip_id = trip_id
             key = f"trip_{trip_id}_reset"
-            confirm = form.get("confirm", "") == "yes"
+            confirm = form.get("confirm_reset") == "on"
+            token = (form.get("confirm_token") or "").strip().lower()
             preserve_local = form.get("preserve_settings") == "on"
-            if not confirm:
-                errors.setdefault(key, []).append("Reset cancelled by user.")
+            if not confirm or token != "reset":
+                errors.setdefault(key, []).append(
+                    "Confirmation required: tick the box and type 'reset'"
+                )
             else:
                 try:
                     reset_trip_data(
@@ -510,9 +541,9 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
         try:
             trip_id = int(trip_id_raw)
         except (TypeError, ValueError):
-            errors.setdefault(
-                "general", []
-            ).append("Invalid trip identifier for activation.")
+            errors.setdefault("general", []).append(
+                "Invalid trip identifier for activation."
+            )
         else:
             focus_trip_id = trip_id
             key = f"trip_{trip_id}_activate"
@@ -551,8 +582,12 @@ async def ui_trips_history(request: Request, db: Database = Depends(get_db)):
     phase = compute_phase(db)
     settings = get_settings()
     histories = _build_trip_history_list(db)
-    total_spent = round2(sum(item["total_spent"] for item in histories)) if histories else 0.0
-    total_expenses = sum(item["expense_count"] for item in histories) if histories else 0
+    total_spent = (
+        round2(sum(item["total_spent"] for item in histories)) if histories else 0.0
+    )
+    total_expenses = (
+        sum(item["expense_count"] for item in histories) if histories else 0
+    )
     history_totals = {
         "count": len(histories),
         "total_spent": total_spent,
@@ -694,7 +729,7 @@ async def ui_alerts(request: Request, db: Database = Depends(get_db)):
         "version": settings.version,
         "alerts": alerts,
         "alerts_count": len(alerts),
-        }
+    }
     context.update(_trip_nav_context(db, trip_id=trip_id))
     return templates.TemplateResponse("alerts.html", context)
 
@@ -1119,7 +1154,9 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
                 try:
                     target_trip_id = int(trip_id_raw)
                 except (TypeError, ValueError):
-                    errors.setdefault("reset_trip", []).append("Invalid trip identifier")
+                    errors.setdefault("reset_trip", []).append(
+                        "Invalid trip identifier"
+                    )
         if not confirm or token != "reset":
             errors.setdefault("reset_trip", []).append(
                 "Confirmation required: tick the box and type 'reset'"
