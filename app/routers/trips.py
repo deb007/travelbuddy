@@ -176,6 +176,26 @@ async def archive_trip(trip_id: int, db: Database = Depends(get_db)):
 
 
 @router.post(
+    "/{trip_id}/unarchive",
+    response_model=TripOut,
+    summary="Unarchive trip",
+)
+async def unarchive_trip(
+    trip_id: int, make_active: bool = False, db: Database = Depends(get_db)
+):
+    """Unarchive a trip and optionally make it the active trip."""
+    try:
+        db.unarchive_trip(trip_id, make_active=make_active)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    clear_trip_context()
+    row = db.get_trip(trip_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="trip not found")
+    return _row_to_trip(row)
+
+
+@router.post(
     "/{trip_id}/reset",
     response_model=TripOut,
     summary="Reset trip data",

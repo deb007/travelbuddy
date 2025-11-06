@@ -523,6 +523,32 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
             except ValueError as exc:
                 errors.setdefault(key, []).append(str(exc) or "Failed to archive trip")
 
+    elif section == "unarchive":
+        trip_id_raw = form.get("trip_id")
+        make_active_flag = form.get("make_active") == "on"
+        try:
+            trip_id = int(trip_id_raw)
+        except (TypeError, ValueError):
+            errors.setdefault("general", []).append(
+                "Invalid trip identifier for unarchive action."
+            )
+        else:
+            focus_trip_id = trip_id
+            key = f"trip_{trip_id}_unarchive"
+            try:
+                db.unarchive_trip(trip_id, make_active=make_active_flag)
+                clear_trip_context()
+                if make_active_flag:
+                    messages.setdefault(key, []).append(
+                        "Trip unarchived and set as active"
+                    )
+                else:
+                    messages.setdefault(key, []).append("Trip unarchived")
+            except ValueError as exc:
+                errors.setdefault(key, []).append(
+                    str(exc) or "Failed to unarchive trip"
+                )
+
     elif section == "reset_trip_data":
         trip_id_raw = form.get("trip_id")
         try:
@@ -534,10 +560,13 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
         else:
             focus_trip_id = trip_id
             key = f"trip_{trip_id}_reset"
-            confirm = form.get("confirm", "") == "yes"
+            confirm = form.get("confirm_reset") == "on"
+            token = (form.get("confirm_token") or "").strip().lower()
             preserve_local = form.get("preserve_settings") == "on"
-            if not confirm:
-                errors.setdefault(key, []).append("Reset cancelled by user.")
+            if not confirm or token != "reset":
+                errors.setdefault(key, []).append(
+                    "Confirmation required: tick the box and type 'reset'"
+                )
             else:
                 try:
                     reset_trip_data(

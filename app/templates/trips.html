@@ -161,6 +161,7 @@
             {% for trip in trips %}
             {% set update_key = 'trip_' ~ trip.id ~ '_update' %}
             {% set archive_key = 'trip_' ~ trip.id ~ '_archive' %}
+            {% set unarchive_key = 'trip_' ~ trip.id ~ '_unarchive' %}
             {% set activate_key = 'trip_' ~ trip.id ~ '_activate' %}
             {% set reset_key = 'trip_' ~ trip.id ~ '_reset' %}
             <div id="trip-{{ trip.id }}"
@@ -223,9 +224,37 @@
                     {% endfor %}
                 </div>
                 {% endif %}
+                {% if messages.get(unarchive_key) %}
+                <div class="bg-emerald-900/40 border border-emerald-700/60 text-emerald-200 text-xs rounded px-3 py-2">
+                    {% for msg in messages.get(unarchive_key) %}
+                    <div>{{ msg }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if errors.get(unarchive_key) %}
+                <div class="bg-red-900/40 border border-red-700/60 text-red-200 text-xs rounded px-3 py-2 space-y-1">
+                    {% for err in errors.get(unarchive_key) %}
+                    <div>{{ err }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if messages.get(activate_key) %}
+                <div class="bg-emerald-900/40 border border-emerald-700/60 text-emerald-200 text-xs rounded px-3 py-2">
+                    {% for msg in messages.get(activate_key) %}
+                    <div>{{ msg }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if errors.get(activate_key) %}
+                <div class="bg-red-900/40 border border-red-700/60 text-red-200 text-xs rounded px-3 py-2 space-y-1">
+                    {% for err in errors.get(activate_key) %}
+                    <div>{{ err }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
 
                 <details class="bg-slate-900/40 border border-slate-700/60 rounded-lg p-4 text-sm" {% if
-                    focus_trip_id==trip.id %}open{% endif %}>
+                    focus_trip_id == trip.id %}open{% endif %}>
                     <summary
                         class="cursor-pointer text-xs uppercase tracking-wide text-slate-300 font-semibold flex items-center gap-2">
                         Edit trip details
@@ -274,6 +303,28 @@
                 </details>
 
                 <div class="flex flex-wrap items-center gap-3">
+                    {% if trip.status == 'archived' %}
+                    <details class="inline-block">
+                        <summary
+                            class="cursor-pointer px-3 py-2 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors">
+                            Unarchive
+                        </summary>
+                        <form method="post" action="/ui/trips"
+                            class="mt-2 p-3 bg-slate-800 border border-slate-700 rounded space-y-2">
+                            <input type="hidden" name="section" value="unarchive" />
+                            <input type="hidden" name="trip_id" value="{{ trip.id }}" />
+                            <label class="flex items-center gap-2 text-xs text-slate-300">
+                                <input type="checkbox" name="make_active"
+                                    class="rounded bg-slate-950 border-slate-600 text-blue-600 focus:ring-blue-500" />
+                                Set as active trip
+                            </label>
+                            <button
+                                class="w-full px-3 py-2 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors">
+                                Confirm Unarchive
+                            </button>
+                        </form>
+                    </details>
+                    {% else %}
                     <form method="post" action="/ui/trips" class="inline">
                         <input type="hidden" name="section" value="activate" />
                         <input type="hidden" name="trip_id" value="{{ trip.id }}" />
@@ -289,6 +340,7 @@
                             {% if trip.status=='archived' %}disabled title="Already archived" {% endif
                             %}>Archive</button>
                     </form>
+                    {% endif %}
                     <form method="post" action="/ui/trips" class="inline"
                         onsubmit="return confirm('Reset all data for {{ trip.name }}? This removes expenses, budgets, and forex records.');">
                         <input type="hidden" name="section" value="reset_trip_data" />
