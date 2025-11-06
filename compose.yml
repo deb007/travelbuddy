@@ -13,7 +13,8 @@ services:
       # DB_FILENAME can be overridden if desired
       # EXCHANGE_RATE_PROVIDER: static|external-placeholder|external-http
     volumes:
-      - app_data:/data
+      - ./data:/data
+      # - app_data:/data
       # Optionally mount templates/static for iterative development
       # - ./app/templates:/app/app/templates:ro
       # - ./app/static:/app/app/static:ro

@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from app.core.config import get_settings
 from app.db.dal import Database
-from app.models.constants import FOREX_CURRENCIES
 from app.services.forex_utils import card_status
 from app.services.settings import get_thresholds
 from app.services.trip_context import get_active_trip_id, clear_trip_context
@@ -53,9 +52,16 @@ async def set_loaded_amount(
 ):
     clear_trip_context()
     currency = currency.upper()
-    if currency not in FOREX_CURRENCIES:
-        raise HTTPException(status_code=400, detail="unsupported forex currency")
     resolved_trip = trip_id if trip_id is not None else get_active_trip_id(db)
+
+    # Validate against trip-specific forex currencies
+    trip_forex_currencies = db.get_trip_forex_currencies(trip_id=resolved_trip)
+    if currency not in trip_forex_currencies:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Currency {currency} is not a forex currency for this trip. Valid forex currencies: {', '.join(trip_forex_currencies) if trip_forex_currencies else 'none'}",
+        )
+
     try:
         db.set_forex_card_loaded(currency, payload.loaded_amount, trip_id=resolved_trip)
     except ValueError as e:

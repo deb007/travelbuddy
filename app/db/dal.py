@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import sqlite3
+import json
 from typing import Any, Dict, List, Optional
 from datetime import date
 
@@ -122,21 +123,30 @@ class Database:
         end_date: Optional[date] = None,
         status: str = "active",
         make_active: bool = False,
+        currencies: Optional[List[str]] = None,
     ) -> int:
         if status not in VALID_TRIP_STATUSES:
             raise ValueError(f"Unsupported trip status '{status}'")
+
+        # Get default currencies if not provided
+        if currencies is None:
+            currencies = self.get_default_currencies()
+
+        currencies_json = json.dumps(currencies)
+
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute(
                 f"""
-                INSERT INTO trips (name, start_date, end_date, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ({UTC_NOW_SQL}), ({UTC_NOW_SQL}))
+                INSERT INTO trips (name, start_date, end_date, status, currencies, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ({UTC_NOW_SQL}), ({UTC_NOW_SQL}))
                 """,
                 (
                     name,
                     start_date.isoformat() if start_date else None,
                     end_date.isoformat() if end_date else None,
                     status,
+                    currencies_json,
                 ),
             )
             trip_id = int(cur.lastrowid)
@@ -472,6 +482,7 @@ class Database:
         start_date: Any = _UNSET,
         end_date: Any = _UNSET,
         status: Any = _UNSET,
+        currencies: Any = _UNSET,
     ) -> None:
         updates: List[str] = []
         params: List[Any] = []
@@ -492,6 +503,13 @@ class Database:
                 raise ValueError(f"Unsupported trip status '{status}'")
             updates.append("status = ?")
             params.append(status)
+        if currencies is not _UNSET:
+            if currencies is not None:
+                updates.append("currencies = ?")
+                params.append(json.dumps(currencies))
+            else:
+                updates.append("currencies = ?")
+                params.append(json.dumps(self.get_default_currencies()))
 
         if not updates:
             return
@@ -567,6 +585,62 @@ class Database:
                 self._set_active_trip(cur, trip_id)
 
             conn.commit()
+
+    # ------------------------------------------------------------------
+    # Currency utilities
+    def get_default_currencies(self) -> List[str]:
+        """Get global default currencies from metadata, or fallback to hardcoded defaults."""
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT value FROM metadata WHERE key = 'default_currencies'")
+            row = cur.fetchone()
+            if row and row[0]:
+                try:
+                    return json.loads(row[0])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        # Fallback to legacy hardcoded defaults
+        return ["INR", "SGD", "MYR"]
+
+    def set_default_currencies(self, currencies: List[str]) -> None:
+        """Set global default currencies in metadata."""
+        if not currencies or len(currencies) == 0:
+            raise ValueError("currencies list cannot be empty")
+
+        currencies_json = json.dumps(currencies)
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                INSERT INTO metadata (key, value, updated_at)
+                VALUES ('default_currencies', ?, ({UTC_NOW_SQL}))
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = ({UTC_NOW_SQL})
+                """,
+                (currencies_json,),
+            )
+            conn.commit()
+
+    def get_trip_currencies(self, trip_id: Optional[int] = None) -> List[str]:
+        """Get currencies for a specific trip, falling back to defaults if not set."""
+        with self._connect() as conn:
+            cur = conn.cursor()
+            tid = self._resolve_trip_id(trip_id, cur)
+            cur.execute("SELECT currencies FROM trips WHERE id = ?", (tid,))
+            row = cur.fetchone()
+            if row and row[0]:
+                try:
+                    return json.loads(row[0])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            # Fallback to global defaults
+            return self.get_default_currencies()
+
+    def get_trip_forex_currencies(self, trip_id: Optional[int] = None) -> List[str]:
+        """Get forex currencies for a trip (all currencies except INR)."""
+        all_currencies = self.get_trip_currencies(trip_id)
+        return [c for c in all_currencies if c != "INR"]
 
     # ------------------------------------------------------------------
     # Expense CRUD

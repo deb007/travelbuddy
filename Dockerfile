@@ -35,13 +35,15 @@ COPY docs ./docs
 COPY scripts ./scripts
 COPY SETTINGS.md ./
 
-# Create data dir (bind mounted in compose for persistence)
-RUN mkdir -p ${DATA_DIR} \
-    && addgroup --system appgroup \
+# Create user and set ownership of app directory only
+# (DATA_DIR will be bind-mounted with host permissions)
+RUN addgroup --system appgroup \
     && adduser --system --ingroup appgroup --home ${APP_HOME} appuser \
-    && chown -R appuser:appgroup ${DATA_DIR} ${APP_HOME}
+    && chown -R appuser:appgroup ${APP_HOME}
 
-USER appuser
+# Run as root to allow writing to bind-mounted volumes
+# In production, use proper volume permissions or run with --user flag
+# USER appuser
 
 EXPOSE 8000
 

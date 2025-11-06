@@ -81,6 +81,15 @@
                         class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
                 </label>
             </div>
+            <div class="sm:col-span-2 lg:col-span-4">
+                <label class="block text-xs font-semibold tracking-wide text-slate-300">Currencies
+                    <input type="text" name="currencies" value="{{ create_form.currencies }}"
+                        class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="e.g. INR, SGD, MYR (comma-separated, leave blank to use global defaults)" />
+                    <p class="mt-1 text-xs text-slate-400">Specify currencies for this trip. Leave blank to use global
+                        default currencies.</p>
+                </label>
+            </div>
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <label class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300">
                     <input type="checkbox" name="make_active" class="accent-blue-500" {% if create_form.make_active %}
@@ -276,6 +285,15 @@
                                 class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
                         </label>
                         <div class="sm:col-span-2 lg:col-span-4">
+                            <label class="block text-xs font-semibold tracking-wide text-slate-300">Currencies
+                                <input type="text" name="currencies" value="{{ trip.form.currencies }}"
+                                    class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    placeholder="e.g. INR, SGD, MYR (comma-separated, leave blank to use global defaults)" />
+                                <p class="mt-1 text-xs text-slate-400">Specify currencies for this trip. Leave blank to
+                                    use global default currencies.</p>
+                            </label>
+                        </div>
+                        <div class="sm:col-span-2 lg:col-span-4">
                             <button
                                 class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded shadow transition-colors">
                                 Save Changes
@@ -318,9 +336,9 @@
                         <input type="hidden" name="section" value="archive" />
                         <input type="hidden" name="trip_id" value="{{ trip.id }}" />
                         <button
-                            class="px-3 py-2 text-xs font-semibold rounded bg-slate-700 hover:bg-slate-600 text-slate-100 transition-colors">
-                            Archive
-                        </button>
+                            class="px-3 py-2 text-xs font-semibold rounded bg-slate-700 hover:bg-slate-600 text-slate-100 disabled:bg-slate-800 disabled:text-slate-500 transition-colors"
+                            {% if trip.status=='archived' %}disabled title="Already archived" {% endif
+                            %}>Archive</button>
                     </form>
                     {% endif %}
                     <form method="post" action="/ui/trips" class="inline"

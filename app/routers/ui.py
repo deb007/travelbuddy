@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from typing import List, Optional, Dict, Any
+import json
 
 from fastapi import APIRouter, Depends, Request, Form, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -33,7 +34,6 @@ from app.services.app_settings import (
     get_widget_flag,
     set_widget_flag,
 )
-from app.models.constants import FOREX_CURRENCIES
 from app.services.analytics_utils import (
     compute_average_daily_spend,
     compute_remaining_daily_budget,
@@ -84,10 +84,20 @@ def _trip_nav_context(db: Database, trip_id: Optional[int] = None) -> Dict[str, 
             }
         )
     active = next((t for t in trips if t["id"] == tid), None)
+
+    # Determine if Forex tab should be shown
+    # Show forex tab only if trip has more than 1 currency OR has forex currencies (non-INR)
+    show_forex = False
+    trip_currencies = db.get_trip_currencies(tid)
+    forex_currencies = [c for c in trip_currencies if c != "INR"]
+    if len(forex_currencies) > 0:
+        show_forex = True
+
     return {
         "active_trip": active,
         "active_trip_id": tid,
         "trip_options": trips,
+        "show_forex_tab": show_forex,
     }
 
 
@@ -98,6 +108,7 @@ def _base_create_form_state() -> Dict[str, Any]:
         "end_date": "",
         "status": "active",
         "make_active": False,
+        "currencies": "",
     }
 
 
@@ -170,11 +181,23 @@ def _build_trip_management_context(
         spent_inr = round2(db.total_inr_spent(trip_id=tid))
         total_spend += spent_inr
 
+        # Parse currencies from JSON
+        currencies_raw = row.get("currencies")
+        if currencies_raw:
+            try:
+                currencies_list = json.loads(currencies_raw)
+                currencies_str = ", ".join(currencies_list)
+            except Exception:
+                currencies_str = ""
+        else:
+            currencies_str = ""
+
         form_defaults = {
             "name": row.get("name", ""),
             "start_date": start_date.isoformat() if start_date else "",
             "end_date": end_date.isoformat() if end_date else "",
             "status": status,
+            "currencies": currencies_str,
         }
         override = edit_overrides.get(tid)
         if override:
@@ -339,12 +362,22 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
         end_raw = (form.get("end_date") or "").strip()
         status = (form.get("status") or "active").strip().lower()
         make_active = _parse_checkbox(form.get("make_active"))
+        currencies_raw = (form.get("currencies") or "").strip()
+
+        # Parse currencies from comma-separated input
+        currencies_list = None
+        if currencies_raw:
+            currencies_list = [
+                c.strip().upper() for c in currencies_raw.split(",") if c.strip()
+            ]
+
         create_state = {
             "name": name,
             "start_date": start_raw,
             "end_date": end_raw,
             "status": status or "active",
             "make_active": make_active,
+            "currencies": currencies_raw,
         }
         if status not in valid_statuses:
             errors.setdefault("create", []).append("Unsupported status selection.")
@@ -360,6 +393,7 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
                     end_date=end_raw or None,
                     status=status or "active",
                     make_active=make_active,
+                    currencies=currencies_list,
                 )
                 trip_id = db.create_trip(
                     name=payload.name,
@@ -367,6 +401,7 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
                     end_date=payload.end_date,
                     status=payload.status,
                     make_active=payload.make_active,
+                    currencies=payload.currencies,
                 )
                 clear_trip_context()
                 focus_trip_id = trip_id
@@ -406,11 +441,21 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
             start_raw = (form.get("start_date") or "").strip()
             end_raw = (form.get("end_date") or "").strip()
             status_raw = (form.get("status") or "").strip().lower()
+            currencies_raw = (form.get("currencies") or "").strip()
+
+            # Parse currencies from comma-separated input
+            currencies_list = None
+            if currencies_raw:
+                currencies_list = [
+                    c.strip().upper() for c in currencies_raw.split(",") if c.strip()
+                ]
+
             override_state = {
                 "name": name_raw,
                 "start_date": start_raw,
                 "end_date": end_raw,
                 "status": status_raw or "active",
+                "currencies": currencies_raw,
             }
             edit_overrides[trip_id] = override_state
             if status_raw and status_raw not in valid_statuses:
@@ -421,6 +466,7 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
                     "start_date": start_raw or None,
                     "end_date": end_raw or None,
                     "status": status_raw or None,
+                    "currencies": currencies_list,
                 }
                 try:
                     payload = TripUpdate(**payload_kwargs)
@@ -433,6 +479,8 @@ async def ui_trips_submit(request: Request, db: Database = Depends(get_db)):
                         updates["end_date"] = payload.end_date
                     if payload.status is not None:
                         updates["status"] = payload.status
+                    if payload.currencies is not None:
+                        updates["currencies"] = payload.currencies
                     db.update_trip(trip_id, **updates)
                     clear_trip_context()
                     edit_overrides.pop(trip_id, None)
@@ -662,6 +710,8 @@ async def ui_budgets(request: Request, db: Database = Depends(get_db)):
     settings = get_settings()
     trip_id = get_active_trip_id(db)
     budgets = list_budget_statuses(db, trip_id=trip_id)
+    existing = {b["currency"] for b in budgets}
+    unused_currencies = [c for c in CURRENCIES if c not in existing]
 
     # Derive counts for thresholds (purely presentational)
     total = len(budgets)
@@ -678,6 +728,107 @@ async def ui_budgets(request: Request, db: Database = Depends(get_db)):
         "warn_budgets": warn_list,
         "danger_budgets": danger_list,
         "alerts_count": len(alerts),
+        "unused_currencies": unused_currencies,
+        "messages": {},
+        "errors": {},
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("budgets.html", context)
+
+
+@router.post("/ui/budgets", response_class=HTMLResponse)
+async def ui_budgets_submit(request: Request, db: Database = Depends(get_db)):
+    """Handle create/update budget form submissions.
+
+    Two sections supported via hidden 'section' field:
+    - section=update: expects multiple budget update rows (currency + max_amount)
+    - section=create: create a single new budget for a selected currency
+    """
+    clear_trip_context()
+    phase = compute_phase(db)
+    settings = get_settings()
+    trip_id = get_active_trip_id(db)
+    form = await request.form()
+    section = (form.get("section") or "").strip().lower()
+    messages: dict[str, list[str]] = {}
+    errors: dict[str, list[str]] = {}
+
+    def _add_err(key: str, msg: str):
+        errors.setdefault(key, []).append(msg)
+
+    def _add_msg(key: str, msg: str):
+        messages.setdefault(key, []).append(msg)
+
+    if section == "update":
+        # Iterate through submitted currencies; names follow pattern max_<CUR>
+        for key, value in form.items():
+            if not key.startswith("max_"):
+                continue
+            raw_currency = key[4:].upper().strip()
+            if raw_currency not in CURRENCIES:
+                _add_err("update", f"Unsupported currency '{raw_currency}'")
+                continue
+            raw_amount = (value or "").replace(",", "").strip()
+            if raw_amount == "":
+                _add_err("update", f"No amount provided for {raw_currency}")
+                continue
+            try:
+                amt = float(raw_amount)
+            except ValueError:
+                _add_err("update", f"Invalid number for {raw_currency}")
+                continue
+            if amt <= 0:
+                _add_err("update", f"Amount must be > 0 for {raw_currency}")
+                continue
+            try:
+                db.set_budget_max(raw_currency, amt, trip_id=trip_id)
+                _add_msg("update", f"Updated {raw_currency} budget")
+            except Exception as exc:  # broad catch, log could be added
+                _add_err("update", f"Failed to update {raw_currency}: {exc}")
+    elif section == "create":
+        new_currency = (form.get("new_currency") or "").upper().strip()
+        raw_amount = (form.get("new_max_amount") or "").replace(",", "").strip()
+        if new_currency not in CURRENCIES:
+            _add_err("create", "Select a valid currency")
+        elif raw_amount == "":
+            _add_err("create", "Provide a max amount")
+        else:
+            try:
+                amt = float(raw_amount)
+            except ValueError:
+                _add_err("create", "Invalid number for amount")
+            else:
+                if amt <= 0:
+                    _add_err("create", "Amount must be > 0")
+                else:
+                    try:
+                        db.set_budget_max(new_currency, amt, trip_id=trip_id)
+                        _add_msg("create", f"Added {new_currency} budget")
+                    except Exception as exc:
+                        _add_err("create", f"Failed to add budget: {exc}")
+    else:
+        _add_err("general", "Unrecognized action")
+
+    # Recompute budgets and context
+    budgets = list_budget_statuses(db, trip_id=trip_id)
+    existing = {b["currency"] for b in budgets}
+    unused_currencies = [c for c in CURRENCIES if c not in existing]
+    total = len(budgets)
+    warn_list = [b for b in budgets if b["eighty"] and not b["ninety"]]
+    danger_list = [b for b in budgets if b["ninety"]]
+    alerts = collect_alerts(db, trip_id=trip_id)
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "budgets": budgets,
+        "total_budgets": total,
+        "warn_budgets": warn_list,
+        "danger_budgets": danger_list,
+        "alerts_count": len(alerts),
+        "unused_currencies": unused_currencies,
+        "messages": messages,
+        "errors": errors,
     }
     context.update(_trip_nav_context(db, trip_id=trip_id))
     return templates.TemplateResponse("budgets.html", context)
@@ -699,6 +850,10 @@ async def ui_forex(request: Request, db: Database = Depends(get_db)):
     cards = list_forex_status(rows, forex_low_pct=thresholds.forex_low)
     low_cards = [c for c in cards if c["low_balance"]]
     alerts = collect_alerts(db, trip_id=trip_id)
+
+    # Get trip-specific forex currencies
+    forex_currencies = db.get_trip_forex_currencies(trip_id=trip_id)
+
     context = {
         "request": request,
         "current_phase": phase,
@@ -706,6 +861,85 @@ async def ui_forex(request: Request, db: Database = Depends(get_db)):
         "cards": cards,
         "low_cards": low_cards,
         "alerts_count": len(alerts),
+        "forex_currencies": forex_currencies,
+        "form": {},
+        "messages": {},
+        "errors": {},
+    }
+    context.update(_trip_nav_context(db, trip_id=trip_id))
+    return templates.TemplateResponse("forex.html", context)
+
+
+@router.post("/ui/forex", response_class=HTMLResponse)
+async def ui_forex_submit(request: Request, db: Database = Depends(get_db)):
+    """Handle forex card load form submissions."""
+    clear_trip_context()
+    phase = compute_phase(db)
+    settings = get_settings()
+    trip_id = get_active_trip_id(db)
+    form_data = await request.form()
+    messages: dict[str, str] = {}
+    errors: dict[str, list[str]] = {}
+
+    # Get trip-specific forex currencies
+    forex_currencies = db.get_trip_forex_currencies(trip_id=trip_id)
+
+    currency = (form_data.get("currency") or "").upper().strip()
+    loaded_amount_str = (form_data.get("loaded_amount") or "").strip()
+
+    # Validate inputs
+    if currency not in forex_currencies:
+        errors.setdefault("forex_form", []).append(
+            f"Invalid currency. Must be one of: {', '.join(forex_currencies) if forex_currencies else 'none (no forex currencies configured for this trip)'}"
+        )
+
+    if not loaded_amount_str:
+        errors.setdefault("forex_form", []).append("Loaded amount is required")
+    else:
+        try:
+            loaded_amount = float(loaded_amount_str)
+            if loaded_amount <= 0:
+                errors.setdefault("forex_form", []).append(
+                    "Loaded amount must be greater than 0"
+                )
+        except ValueError:
+            errors.setdefault("forex_form", []).append("Invalid loaded amount format")
+            loaded_amount = None
+
+    # If validation passes, update the forex card
+    if not errors and currency and loaded_amount:
+        try:
+            db.set_forex_card_loaded(currency, loaded_amount, trip_id=trip_id)
+            messages["forex_success"] = (
+                f"{currency} card loaded with {loaded_amount:.2f}"
+            )
+        except ValueError as e:
+            errors.setdefault("forex_form", []).append(str(e))
+        except Exception as e:
+            errors.setdefault("forex_form", []).append(
+                f"Failed to update forex card: {str(e)}"
+            )
+
+    # Re-fetch cards to display updated data
+    rows = db.list_forex_cards(trip_id=trip_id)
+    thresholds = get_thresholds(db)
+    cards = list_forex_status(rows, forex_low_pct=thresholds.forex_low)
+    low_cards = [c for c in cards if c["low_balance"]]
+    alerts = collect_alerts(db, trip_id=trip_id)
+
+    context = {
+        "request": request,
+        "current_phase": phase,
+        "version": settings.version,
+        "cards": cards,
+        "low_cards": low_cards,
+        "alerts_count": len(alerts),
+        "forex_currencies": forex_currencies,
+        "form": {"currency": currency, "loaded_amount": loaded_amount_str}
+        if errors
+        else {},
+        "messages": messages,
+        "errors": errors,
     }
     context.update(_trip_nav_context(db, trip_id=trip_id))
     return templates.TemplateResponse("forex.html", context)
@@ -975,14 +1209,18 @@ async def ui_settings(request: Request, db: Database = Depends(get_db)):
     alerts = collect_alerts(db, trip_id=trip_id)
     trip_dates = db.get_trip_dates(trip_id=trip_id)
     th = get_thresholds(db)
+
+    # Get trip-specific forex currencies
+    trip_forex_currencies = db.get_trip_forex_currencies(trip_id=trip_id)
+
     existing_rows = {
         r["currency"]: r
         for r in db.list_forex_cards(trip_id=trip_id)
-        if r["currency"] in FOREX_CURRENCIES
+        if r["currency"] in trip_forex_currencies
     }
     # Ensure all supported forex currencies appear with default placeholders
     forex_rows = {}
-    for cur in sorted(FOREX_CURRENCIES):
+    for cur in sorted(trip_forex_currencies):
         forex_rows[cur] = existing_rows.get(
             cur,
             {"currency": cur, "loaded_amount": 0.0, "spent_amount": 0.0},
@@ -1006,6 +1244,10 @@ async def ui_settings(request: Request, db: Database = Depends(get_db)):
             "currencies": get_widget_flag(db, "currencies", True),
         },
     }
+
+    # Get global default currencies
+    default_currencies = db.get_default_currencies()
+
     context = {
         "request": request,
         "current_phase": phase,
@@ -1020,6 +1262,7 @@ async def ui_settings(request: Request, db: Database = Depends(get_db)):
         "rate_ttl": rate_ttl,
         "budget_flags": budget_flags,
         "ui_prefs": ui_prefs,
+        "default_currencies": default_currencies,
     }
     context.update(_trip_nav_context(db, trip_id=trip_id))
     return templates.TemplateResponse("settings.html", context)
@@ -1069,7 +1312,8 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
     # Forex loads -------------------------------------------------
     elif section == "forex_loads":
         updated_any = False
-        for cur in sorted(FOREX_CURRENCIES):
+        trip_forex_currencies = db.get_trip_forex_currencies(trip_id=trip_id)
+        for cur in sorted(trip_forex_currencies):
             key = f"loaded_{cur}"
             if key in form and form.get(key) != "":
                 try:
@@ -1086,6 +1330,34 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
             errors.setdefault("forex_loads", []).append("No forex values provided")
 
     # New sections ----------------------------------------------
+    elif section == "default_currencies":
+        try:
+            currencies_input = form.get("currencies", "").strip()
+            if not currencies_input:
+                errors.setdefault("default_currencies", []).append(
+                    "Currencies cannot be empty"
+                )
+            else:
+                # Parse comma-separated list
+                currencies = [
+                    c.strip().upper() for c in currencies_input.split(",") if c.strip()
+                ]
+                if len(currencies) == 0:
+                    errors.setdefault("default_currencies", []).append(
+                        "At least one currency is required"
+                    )
+                else:
+                    db.set_default_currencies(currencies)
+                    messages.setdefault("default_currencies", []).append(
+                        f"Default currencies updated: {', '.join(currencies)}"
+                    )
+        except ValueError as ve:
+            errors.setdefault("default_currencies", []).append(str(ve))
+        except Exception as e:
+            errors.setdefault("default_currencies", []).append(
+                f"Failed to update default currencies: {str(e)}"
+            )
+
     elif section == "rate_settings":
         try:
             provider = form.get("rate_provider", "").strip()
@@ -1187,13 +1459,17 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
     trip_id = get_active_trip_id(db)
     trip_dates = db.get_trip_dates(trip_id=trip_id)
     th = get_thresholds(db)
+
+    # Get trip-specific forex currencies
+    trip_forex_currencies = db.get_trip_forex_currencies(trip_id=trip_id)
+
     existing_rows = {
         r["currency"]: r
         for r in db.list_forex_cards(trip_id=trip_id)
-        if r["currency"] in FOREX_CURRENCIES
+        if r["currency"] in trip_forex_currencies
     }
     forex_rows = {}
-    for cur in sorted(FOREX_CURRENCIES):
+    for cur in sorted(trip_forex_currencies):
         forex_rows[cur] = existing_rows.get(
             cur,
             {"currency": cur, "loaded_amount": 0.0, "spent_amount": 0.0},
@@ -1219,6 +1495,9 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
     }
     alerts = collect_alerts(db, trip_id=trip_id)
 
+    # Get global default currencies
+    default_currencies = db.get_default_currencies()
+
     context = {
         "request": request,
         "current_phase": phase,
@@ -1234,6 +1513,7 @@ async def ui_settings_submit(request: Request, db: Database = Depends(get_db)):
         "rate_ttl": rate_ttl,
         "budget_flags": budget_flags,
         "ui_prefs": ui_prefs,
+        "default_currencies": default_currencies,
     }
     context.update(_trip_nav_context(db, trip_id=trip_id))
     return templates.TemplateResponse("settings.html", context)
