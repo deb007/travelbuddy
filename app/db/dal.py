@@ -576,13 +576,18 @@ class Database:
             if row["status"] != "archived":
                 raise ValueError("Trip is not archived")
 
-            cur.execute(
-                f"UPDATE trips SET status = 'active', updated_at = ({UTC_NOW_SQL}) WHERE id = ?",
-                (trip_id,),
-            )
-
             if make_active:
+                # Let _set_active_trip handle the timestamp update.
+                cur.execute(
+                    "UPDATE trips SET status = 'active' WHERE id = ?",
+                    (trip_id,),
+                )
                 self._set_active_trip(cur, trip_id)
+            else:
+                cur.execute(
+                    f"UPDATE trips SET status = 'active', updated_at = ({UTC_NOW_SQL}) WHERE id = ?",
+                    (trip_id,),
+                )
 
             conn.commit()
 
